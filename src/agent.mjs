@@ -49,8 +49,9 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, allowBash, preferredModel, onModel, history }) {
+export async function runAgent({ client, task, cwd, allowBash, preferredModel, onModel, history, mcp }) {
   const execute = makeExecutor({ cwd, allowBash });
+  const toolSet = mcp?.tools?.length ? [...TOOL_DEFS, ...mcp.tools] : TOOL_DEFS;
   const models = modelChain(preferredModel);
   const prov = makeProvenance(cwd);
   const messages = history && history.length
@@ -81,7 +82,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
       out = await completeStream(client, {
         models: order,
         messages,
-        tools: TOOL_DEFS,
+        tools: toolSet,
         onDelta: (t) => {
           if (!streamed) {
             ui.clearThinking();
@@ -129,7 +130,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
       }
 
       ui.toolCall(name, argSummary(name, args));
-      const res = await execute(name, args);
+      const res = mcp && mcp.isMcp(name) ? await mcp.call(name, args) : await execute(name, args);
       ui.toolResult(res.ok, res.summary);
 
       if (res.ok) {

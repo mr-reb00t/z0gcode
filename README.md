@@ -42,7 +42,9 @@ It is not a rebrand of a big framework: the agent loop, tools, and CLI are origi
 - **Reliability on a decentralized backend**: app-level multi-model fallback, retry/backoff, tool-JSON repair, a loop breaker, and model escalation (a stuck turn escalates to a stronger 0G model instead of looping).
 - **Streaming**: the model's output streams token by token, so the agent feels alive.
 - **Session memory**: the conversation persists per directory; `--continue` resumes it and the REPL keeps context across prompts.
-- **Goal loop + slash commands**: `z0g goal "<objective>"` runs and re-runs until a verify command (e.g. `npm test`) passes; the REPL has `/goal`, `/model`, `/attest`, `/verify`, `/clear`, `/help`, `/exit`.
+- **Goal loop + slash commands**: `z0g goal "<objective>"` runs and re-runs until a verify command (e.g. `npm test`) passes; the REPL has `/goal`, `/model`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`.
+- **Planning**: on multi-step tasks the agent lays out a visible checklist (`update_plan`), updating it as it works; `/plan` shows it.
+- **MCP client**: connect to MCP servers (0G or third-party) via `.z0g/mcp.json`; their tools appear to the agent as `mcp_<server>__<tool>`, turning z0gcode into a hub.
 
 Feature proposals and specs live under [openspec/](openspec/) (OpenSpec, spec-driven).
 

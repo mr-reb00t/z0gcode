@@ -22,6 +22,7 @@
     "verify": "node scripts/verify-router.mjs 0gm-1.0-35b-a3b deepseek-v4-pro glm-5.2 kimi-k2.7-code"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "openai": "^4.77.0"
   },
   "optionalDependencies": {

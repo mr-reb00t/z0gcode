@@ -11,6 +11,7 @@ import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
 import { saveSession, loadSession } from "../src/session.mjs";
 import { loadPlan } from "../src/plan.mjs";
+import { loadMcp } from "../src/mcp.mjs";
 import * as ui from "../src/ui.mjs";
 
 const HELP = `${ui.color.magenta("z0gcode")} — a coding agent whose brain runs on 0G Compute.
@@ -157,8 +158,11 @@ async function runTask(task, flags) {
   const client = makeClient();
   const cwd = resolveCwd(flags);
   const history = flags.cont ? await loadSession(cwd) : null;
-  const res = await runAgent({ client, task, cwd, allowBash: flags.auto, preferredModel: flags.model, history });
+  const mcp = await loadMcp(cwd);
+  if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
+  const res = await runAgent({ client, task, cwd, allowBash: flags.auto, preferredModel: flags.model, history, mcp });
   if (res?.messages) await saveSession(cwd, res.messages);
+  await mcp?.close();
 }
 
 async function cmdGoal(objective, flags) {
@@ -178,6 +182,8 @@ async function repl(flags) {
   const cwd = resolveCwd(flags);
   let history = flags.cont ? await loadSession(cwd) : null;
   let model = flags.model;
+  const mcp = await loadMcp(cwd);
+  if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: ui.color.magenta("z0g › ") });
   ui.info("Interactive session. Type a task, or /help for commands.");
   rl.prompt();
@@ -203,12 +209,13 @@ async function repl(flags) {
       continue;
     }
 
-    const res = await runAgent({ client, task: input, cwd, allowBash: flags.auto, preferredModel: model, history });
+    const res = await runAgent({ client, task: input, cwd, allowBash: flags.auto, preferredModel: model, history, mcp });
     history = res.messages;
     await saveSession(cwd, history);
     rl.prompt();
   }
   rl.close();
+  await mcp?.close();
 }
 
 async function main() {
