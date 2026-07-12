@@ -29,7 +29,8 @@ Options:
   --auto                 Allow shell commands and on-chain actions (run_bash, upload_0g_storage)
   --continue             Continue the saved session in this directory
   --model <id>           Override the model (default ${CONFIG.model})
-  --verify "<cmd>"       Verify command for 'goal' (default: npm test if present)
+  --verify "<cmd>"       Run the task, then verify and self-correct with this command
+  --auto-verify          Same, auto-detecting the verify command (npm test / .z0g/verify)
   --max-steps <n>        Max agent steps (default ${CONFIG.maxSteps})
   --cwd <dir>            Working directory (default: current)
   -h, --help             Show this help
@@ -57,6 +58,7 @@ function parse(argv) {
     const a = argv[i];
     if (a === "--auto") flags.auto = true;
     else if (a === "--mcp") flags.mcp = true;
+    else if (a === "--auto-verify") flags.autoVerify = true;
     else if (a === "--continue") flags.cont = true;
     else if (a === "--model") flags.model = argv[++i];
     else if (a === "--verify") flags.verify = argv[++i];
@@ -157,8 +159,14 @@ async function runVerify(cwd) {
 }
 
 async function runTask(task, flags) {
-  const client = makeClient();
   const cwd = resolveCwd(flags);
+  // Auto-verify: a normal run becomes self-correcting when a verify command is present.
+  const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
+  if (verifyCmd) {
+    await runGoal({ client: makeClient(), objective: task, cwd, allowBash: flags.auto, preferredModel: flags.model, verifyCmd, maxIters: 3 });
+    return;
+  }
+  const client = makeClient();
   const history = flags.cont ? await loadSession(cwd) : null;
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
