@@ -1,18 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300" viewBox="0 0 600 300" role="img" aria-label="z0gcode: coding agent on 0G">
-  <rect x="0.5" y="0.5" width="599" height="299" rx="14" fill="#0d1117" stroke="#21262d"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="254" viewBox="0 0 600 254" role="img" aria-label="z0gcode: coding agent on 0G">
+  <rect x="0.5" y="0.5" width="599" height="253" rx="14" fill="#0d1117" stroke="#21262d"/>
+  <g transform="translate(167,28)">
+    <rect x="0" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="14" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="28" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="42" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="56" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="210" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="224" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="238" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="252" y="0" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="42" y="29" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="56" y="29" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="196" y="29" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="28" y="58" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="42" y="58" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="196" y="58" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="238" y="58" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="252" y="58" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="14" y="87" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="28" y="87" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="196" y="87" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="252" y="87" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="0" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="14" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="28" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="42" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="56" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="210" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="224" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="238" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="252" y="116" width="14" height="29" fill="#F2F1EC"/>
+    <rect x="112" y="0" width="14" height="29" fill="#A78BFF"/>
+    <rect x="126" y="0" width="14" height="29" fill="#A78BFF"/>
+    <rect x="140" y="0" width="14" height="29" fill="#A78BFF"/>
+    <rect x="98" y="29" width="14" height="29" fill="#A78BFF"/>
+    <rect x="154" y="29" width="14" height="29" fill="#A78BFF"/>
+    <rect x="98" y="58" width="14" height="29" fill="#A78BFF"/>
+    <rect x="154" y="58" width="14" height="29" fill="#A78BFF"/>
+    <rect x="98" y="87" width="14" height="29" fill="#A78BFF"/>
+    <rect x="154" y="87" width="14" height="29" fill="#A78BFF"/>
+    <rect x="112" y="116" width="14" height="29" fill="#A78BFF"/>
+    <rect x="126" y="116" width="14" height="29" fill="#A78BFF"/>
+    <rect x="140" y="116" width="14" height="29" fill="#A78BFF"/>
+    <line x1="112" y1="116" x2="154" y2="29" stroke="#A78BFF" stroke-width="11" stroke-linecap="round"/>
+  </g>
   <style>
-    .logo  { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 26px; }
-    .sub   { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 21px; }
-    .strap { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; fill: #6B7080; }
-    .w { fill: #F2F1EC; }
-    .v { fill: #A78BFF; }
-    .m { fill: #6B7080; }
+    .sub{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:20px}
+    .strap{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:16px;fill:#6B7080}
   </style>
-  <text class="logo" x="150" y="62"  xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
-  <text class="logo" x="150" y="98"  xml:space="preserve"><tspan class="w">   ██  </tspan><tspan class="v">█  /█</tspan><tspan class="w">  █</tspan></text>
-  <text class="logo" x="150" y="134" xml:space="preserve"><tspan class="w">  ██   </tspan><tspan class="v">█ / █</tspan><tspan class="w">  █  ██</tspan></text>
-  <text class="logo" x="150" y="170" xml:space="preserve"><tspan class="w"> ██    </tspan><tspan class="v">█/  █</tspan><tspan class="w">  █   █</tspan></text>
-  <text class="logo" x="150" y="206" xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
-  <text class="sub" x="300" y="248" text-anchor="middle"><tspan class="w">z0gcode</tspan><tspan class="m"> v0.2  ·  coding agent on 0G</tspan></text>
-  <text class="strap" x="300" y="278" text-anchor="middle" xml:space="preserve">model 0gm-1.0-35b-a3b  ·  router-api.0g.ai  <tspan class="v">◈</tspan> TEE</text>
+  <text class="sub" x="300" y="207" text-anchor="middle"><tspan fill="#F2F1EC">z0gcode</tspan><tspan fill="#6B7080"> v0.2  ·  coding agent on 0G</tspan></text>
+  <text class="strap" x="300" y="234" text-anchor="middle" xml:space="preserve">model 0gm-1.0-35b-a3b  ·  router-api.0g.ai  <tspan fill="#A78BFF">◈</tspan> TEE</text>
 </svg>
