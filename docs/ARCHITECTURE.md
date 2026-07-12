@@ -17,7 +17,6 @@ bin/z0g.mjs        CLI: run / models / doctor / attest / interactive; flags; bra
        ├─ src/config.mjs      defaults (0G baked in: router URL, model 0gm-1.0, fallbacks)
        └─ src/ui.mjs          ANSI UI: palette roles, glyphs, tables, colored diffs, HUD, banner
   skills/0g/*.md     bundled 0G stack patterns (chain, compute, storage, network, security, testing)
-  openspec/          spec-driven change proposals (OpenSpec)
 ```
 
 ## Axis A: the brain runs on 0G

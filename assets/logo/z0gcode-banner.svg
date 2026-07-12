@@ -1,18 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="264" viewBox="0 0 720 264" role="img" aria-label="z0gcode: coding agent on 0G">
-  <rect x="0" y="0" width="720" height="264" rx="14" fill="#0d1117" stroke="#21262d" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300" viewBox="0 0 600 300" role="img" aria-label="z0gcode: coding agent on 0G">
+  <rect x="0.5" y="0.5" width="599" height="299" rx="14" fill="#0d1117" stroke="#21262d"/>
   <style>
-    .logo { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 26px; }
-    .lbl  { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 24px; fill: #6B7080; }
-    .strap{ font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 17px; fill: #6B7080; }
+    .logo  { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 26px; }
+    .sub   { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 21px; }
+    .strap { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; fill: #6B7080; }
     .w { fill: #F2F1EC; }
     .v { fill: #A78BFF; }
+    .m { fill: #6B7080; }
   </style>
-  <text class="logo" x="30" y="60"  xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
-  <text class="logo" x="30" y="96"  xml:space="preserve"><tspan class="w">   ██  </tspan><tspan class="v">█  /█</tspan><tspan class="w">  █</tspan></text>
-  <text class="logo" x="30" y="132" xml:space="preserve"><tspan class="w">  ██   </tspan><tspan class="v">█ / █</tspan><tspan class="w">  █  ██</tspan></text>
-  <text class="logo" x="30" y="168" xml:space="preserve"><tspan class="w"> ██    </tspan><tspan class="v">█/  █</tspan><tspan class="w">  █   █</tspan></text>
-  <text class="logo" x="30" y="204" xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
-  <text class="lbl" x="352" y="132">z0gcode v0.2</text>
-  <text class="lbl" x="352" y="168">coding agent on 0G</text>
-  <text class="strap" x="30" y="242" xml:space="preserve">model 0gm-1.0-35b-a3b  ·  router-api.0g.ai  <tspan class="v">◈</tspan> TEE</text>
+  <text class="logo" x="150" y="62"  xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
+  <text class="logo" x="150" y="98"  xml:space="preserve"><tspan class="w">   ██  </tspan><tspan class="v">█  /█</tspan><tspan class="w">  █</tspan></text>
+  <text class="logo" x="150" y="134" xml:space="preserve"><tspan class="w">  ██   </tspan><tspan class="v">█ / █</tspan><tspan class="w">  █  ██</tspan></text>
+  <text class="logo" x="150" y="170" xml:space="preserve"><tspan class="w"> ██    </tspan><tspan class="v">█/  █</tspan><tspan class="w">  █   █</tspan></text>
+  <text class="logo" x="150" y="206" xml:space="preserve"><tspan class="w">█████   </tspan><tspan class="v">███</tspan><tspan class="w">    ████</tspan></text>
+  <text class="sub" x="300" y="248" text-anchor="middle"><tspan class="w">z0gcode</tspan><tspan class="m"> v0.2  ·  coding agent on 0G</tspan></text>
+  <text class="strap" x="300" y="278" text-anchor="middle" xml:space="preserve">model 0gm-1.0-35b-a3b  ·  router-api.0g.ai  <tspan class="v">◈</tspan> TEE</text>
 </svg>
