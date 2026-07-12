@@ -81,7 +81,9 @@ z0g doctor                                               # check key, connectivi
 z0g attest                                               # show which 0G model wrote which change
 ```
 
-In the interactive session, slash commands give direct control: `/goal`, `/model`, `/attest`, `/verify`, `/clear`, `/help`, `/exit`.
+In the interactive session, type `/` and press **Tab** to autocomplete slash commands (or `/` + Enter to list them): `/goal`, `/model`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/model` with no argument opens an interactive picker of the 0G models and remembers your choice.
+
+Your model choice is saved in `~/.z0gcode/settings.json` (like Claude Code's settings), so it persists across sessions. A project-level `.z0g/settings.json` overrides it.
 
 Options: `--auto` (allow `run_bash` and on-chain actions), `--continue`, `--model <id>`, `--verify "<cmd>"`, `--max-steps <n>`, `--cwd <dir>`.
 

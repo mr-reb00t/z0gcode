@@ -13,6 +13,7 @@ import { loadProvenance } from "../src/provenance.mjs";
 import { saveSession, loadSession } from "../src/session.mjs";
 import { loadPlan } from "../src/plan.mjs";
 import { loadMcp } from "../src/mcp.mjs";
+import { saveSetting } from "../src/settings.mjs";
 import * as ui from "../src/ui.mjs";
 
 const HELP = `${ui.color.magenta("z0gcode")} — a coding agent whose brain runs on 0G Compute.
@@ -42,15 +43,57 @@ Setup:
 
 0G is the default backend: no OpenAI or Anthropic key, no config file.`;
 
-const SLASH_HELP = `Commands:
-  /help              Show this help
-  /clear             Reset the conversation context
-  /model <id>        Switch the active model
-  /attest            Show the provenance manifest
-  /plan              Show the current task checklist
-  /verify            Run the project's verify command (npm test / .z0g/verify)
-  /goal <objective>  Run until the verify command passes
-  /exit              Quit`;
+const SLASH_COMMANDS = [
+  ["/help", "Show commands"],
+  ["/clear", "Reset the conversation context"],
+  ["/model", "Pick the active 0G model (saved to settings)"],
+  ["/attest", "Show the provenance manifest"],
+  ["/plan", "Show the current task checklist"],
+  ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
+  ["/goal", "Run until the verify command passes"],
+  ["/exit", "Quit"],
+];
+
+// Menu shown on /help or when you type "/" and hit Enter. `filter` narrows it.
+function slashMenu(filter) {
+  let rows = SLASH_COMMANDS;
+  if (filter) {
+    const f = SLASH_COMMANDS.filter(([c]) => c.startsWith(filter));
+    if (f.length) rows = f;
+  }
+  const list = rows.map(([c, d]) => `  ${ui.color.magenta(c.padEnd(9))}  ${ui.color.dim(d)}`).join("\n");
+  return ui.color.bold("Commands:") + "\n" + list;
+}
+
+// Tab-completion for slash commands: "/" + Tab lists all, "/mo" + Tab -> "/model".
+function slashCompleter(line) {
+  if (!line.startsWith("/")) return [[], line];
+  const names = SLASH_COMMANDS.map(([c]) => c);
+  const hits = names.filter((c) => c.startsWith(line));
+  return [hits.length ? hits : names, line];
+}
+
+// Print the numbered model list and return the ids, for interactive /model.
+async function pickModels(client, current) {
+  let rows = [];
+  try {
+    const res = await client.models.list();
+    rows = (res.data || []).filter((m) => (m.supported_parameters || []).includes("tools"));
+    if (!rows.length) rows = res.data || [];
+  } catch (e) {
+    ui.error("could not list models: " + e.message);
+    return null;
+  }
+  if (!rows.length) return null;
+  console.log(ui.color.bold("Select a 0G model:"));
+  rows.forEach((m, i) => {
+    const cur = m.id === current ? ui.color.green(" ← current") : "";
+    const num = ui.color.magenta(String(i + 1).padStart(2));
+    console.log(`  ${num}. ${m.id.padEnd(20)} ${ui.color.dim("ctx=" + (m.context_length ?? "?"))}${cur}`);
+  });
+  ui.info("Type a number to choose (or a model id). Anything else cancels.");
+  return rows.map((m) => m.id);
+}
 
 function parse(argv) {
   const flags = { auto: false, cont: false };
@@ -195,20 +238,39 @@ async function repl(flags) {
   let model = flags.model;
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: ui.color.magenta("z0g › ") });
-  ui.info("Interactive session. Type a task, or /help for commands.");
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: ui.color.magenta("z0g › "), completer: slashCompleter });
+  let pendingModels = null; // when set, the next line is a /model selection
+  ui.info("Interactive session. Type a task, or / then Tab for commands.");
   rl.prompt();
   for await (const line of rl) {
     const input = line.trim();
     if (!input) { rl.prompt(); continue; }
 
+    // Resolve a pending /model pick (a slash command instead cancels it).
+    if (pendingModels && !input.startsWith("/")) {
+      const list = pendingModels;
+      pendingModels = null;
+      const n = Number.parseInt(input, 10);
+      let chosen = null;
+      if (!Number.isNaN(n) && n >= 1 && n <= list.length) chosen = list[n - 1];
+      else if (list.includes(input)) chosen = input;
+      if (chosen) { model = chosen; saveSetting("model", chosen); ui.info(`model → ${chosen} (saved)`); }
+      else ui.info("model unchanged");
+      rl.prompt();
+      continue;
+    }
+    if (pendingModels) pendingModels = null;
+
     if (input.startsWith("/")) {
       const [cmd, ...rest] = input.slice(1).split(/\s+/);
       const arg = rest.join(" ");
       if (cmd === "exit" || cmd === "quit") break;
-      else if (cmd === "help") console.log(SLASH_HELP);
+      else if (cmd === "help" || cmd === "") console.log(slashMenu());
       else if (cmd === "clear") { history = null; ui.info("context cleared"); }
-      else if (cmd === "model") { model = arg || model; ui.info("model → " + (model || CONFIG.model)); }
+      else if (cmd === "model") {
+        if (arg) { model = arg; saveSetting("model", arg); ui.info(`model → ${arg} (saved)`); }
+        else pendingModels = await pickModels(client, model || CONFIG.model);
+      }
       else if (cmd === "attest") await printAttest(cwd);
       else if (cmd === "plan") { const p = await loadPlan(cwd); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
