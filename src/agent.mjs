@@ -12,6 +12,7 @@ function systemPrompt() {
     "You help developers build software and you are an expert at building on the 0G stack.",
     "",
     "Work like a careful engineer:",
+    "- If the task needs 3 or more steps, your FIRST tool call MUST be update_plan with a short checklist; then update it (exactly one step in_progress) as you complete each step.",
     "- Use search_files (regex) to locate code instead of reading whole files.",
     "- Inspect before you change: read files and list directories first.",
     "- Make minimal, correct edits. Prefer edit_file over rewriting whole files.",
@@ -27,6 +28,7 @@ function argSummary(name, args) {
   if (!args) return "";
   if (name === "run_bash") return args.command || "";
   if (name === "search_files") return args.query || "";
+  if (name === "update_plan") return `${(args.plan || []).length} steps`;
   if (args.path) return args.path;
   if (args.name) return args.name;
   return "";
@@ -132,6 +134,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
 
       if (res.ok) {
         failCounts[name] = 0;
+        if (res.plan) ui.renderPlan(res.plan);
         if (res.change) {
           const diff = ui.renderDiff(res.change.before, res.change.after);
           if (diff) console.log(diff);

@@ -10,6 +10,7 @@ import { runAgent } from "../src/agent.mjs";
 import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
 import { saveSession, loadSession } from "../src/session.mjs";
+import { loadPlan } from "../src/plan.mjs";
 import * as ui from "../src/ui.mjs";
 
 const HELP = `${ui.color.magenta("z0gcode")} — a coding agent whose brain runs on 0G Compute.
@@ -42,6 +43,7 @@ const SLASH_HELP = `Commands:
   /clear             Reset the conversation context
   /model <id>        Switch the active model
   /attest            Show the provenance manifest
+  /plan              Show the current task checklist
   /verify            Run the project's verify command (npm test / .z0g/verify)
   /goal <objective>  Run until the verify command passes
   /exit              Quit`;
@@ -191,6 +193,7 @@ async function repl(flags) {
       else if (cmd === "clear") { history = null; ui.info("context cleared"); }
       else if (cmd === "model") { model = arg || model; ui.info("model → " + (model || CONFIG.model)); }
       else if (cmd === "attest") await printAttest(cwd);
+      else if (cmd === "plan") { const p = await loadPlan(cwd); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
         await runGoal({ client, objective: arg, cwd, allowBash: flags.auto, preferredModel: model, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3 });

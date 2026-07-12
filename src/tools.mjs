@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { listSkills, readSkill } from "./skills.mjs";
+import { savePlan } from "./plan.mjs";
 
 const MAX_READ = 200_000; // chars
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", ".z0g", ".next", "build", "coverage", ".turbo"]);
@@ -105,6 +106,30 @@ export const TOOL_DEFS = [
   {
     type: "function",
     function: {
+      name: "update_plan",
+      description: "Lay out or update a checklist for a multi-step task. Call it at the start of non-trivial work and whenever a step's status changes. Keep exactly one step in_progress.",
+      parameters: {
+        type: "object",
+        properties: {
+          plan: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                step: { type: "string" },
+                status: { type: "string", enum: ["pending", "in_progress", "completed"] },
+              },
+              required: ["step", "status"],
+            },
+          },
+        },
+        required: ["plan"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "read_0g_skill",
       description: "Read a bundled 0G skill doc for accurate SDK patterns. Names: chain, compute, storage, network, security, testing. Call with no name to list them.",
       parameters: {
@@ -175,6 +200,12 @@ export function makeExecutor({ cwd, allowBash }) {
         }
         case "upload_0g_storage": {
           return await uploadToStorage(cwd, args.path, allowBash);
+        }
+        case "update_plan": {
+          const plan = Array.isArray(args.plan) ? args.plan : [];
+          await savePlan(cwd, plan);
+          const done = plan.filter((p) => p.status === "completed").length;
+          return { ok: true, summary: `plan ${done}/${plan.length}`, content: "Plan updated.", plan };
         }
         case "read_0g_skill": {
           if (!args.name) {

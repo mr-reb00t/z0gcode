@@ -66,6 +66,18 @@ export function streamChunk(s) {
   process.stdout.write(s);
 }
 
+// Render the agent's checklist.
+export function renderPlan(plan) {
+  if (!Array.isArray(plan) || plan.length === 0) return;
+  console.log(color.dim("  plan:"));
+  for (const p of plan) {
+    const mark =
+      p.status === "completed" ? color.green("✓") : p.status === "in_progress" ? color.yellow("▶") : color.dim("○");
+    const label = p.status === "completed" ? color.dim(p.step) : p.step;
+    console.log(`    ${mark} ${label}`);
+  }
+}
+
 // HUD line after a turn: token usage + answering model + 0G marker.
 export function hud(model, usage) {
   const i = usage?.prompt_tokens ?? usage?.input_tokens;
