@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80">
+  <g transform="translate(8 8) scale(0.6667)">
+    <circle cx="48" cy="48" r="30" fill="none" stroke="#F2F1EC" stroke-width="10"></circle>
+    <line x1="66" y1="24" x2="30" y2="72" stroke="#A78BFF" stroke-width="10" stroke-linecap="round"></line>
+  </g>
+  <text x="86" y="51" font-family="&#39;JetBrains Mono&#39;, ui-monospace, monospace" font-size="32" font-weight="500" fill="#F2F1EC">z<tspan fill="#A78BFF">0</tspan>gcode</text>
+</svg>

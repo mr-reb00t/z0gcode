@@ -1,0 +1,13 @@
+z0gcode
+Copyright (c) 2026 Andrei Coman
+Licensed under the MIT License (see LICENSE).
+
+z0gcode is an independent implementation. It is inspired by terminal coding
+agents such as OpenCode (https://github.com/sst/opencode) and Claude Code, but
+it does not include their source code; the agent loop, tools, and CLI here are
+original.
+
+Bundled third-party content:
+- skills/0g/*.md are 0G stack pattern docs adapted from
+  0gfoundation/0g-agent-skills (https://github.com/0gfoundation/0g-agent-skills),
+  MIT License. They are included to give the agent accurate 0G knowledge.

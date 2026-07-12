@@ -1,0 +1,31 @@
+{
+  "name": "z0gcode",
+  "version": "0.2.0",
+  "description": "A terminal coding agent whose brain runs on 0G Compute.",
+  "type": "module",
+  "bin": {
+    "z0g": "bin/z0g.mjs"
+  },
+  "license": "MIT",
+  "author": "Andrei Coman",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills"
+  ],
+  "scripts": {
+    "start": "node bin/z0g.mjs",
+    "models": "node scripts/verify-router.mjs --list",
+    "verify": "node scripts/verify-router.mjs 0gm-1.0-35b-a3b deepseek-v4-pro glm-5.2 kimi-k2.7-code"
+  },
+  "dependencies": {
+    "openai": "^4.77.0"
+  },
+  "optionalDependencies": {
+    "ethers": "^6.13.0",
+    "@0glabs/0g-ts-sdk": "^0.3.3"
+  }
+}
