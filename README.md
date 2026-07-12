@@ -49,7 +49,7 @@ cd z0gcode
 npm install
 npm link                    # optional: puts `z0g` on your PATH
 export ZOG_API_KEY=<your 0G Router key from https://pc.0g.ai>
-# or drop ZOG_API_KEY=... into a .env file (loaded automatically)
+# or drop ZOG_API_KEY=... into a .env file (loaded automatically; see .env.example for all options)
 
 z0g doctor                  # check key, connectivity, model
 z0g "add a /health endpoint to server.js and test it"
