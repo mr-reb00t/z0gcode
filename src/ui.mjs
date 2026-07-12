@@ -19,6 +19,9 @@ export const err = sgr("31", "39");
 export const accent = truecolor ? sgr("38;2;167;139;255", "39") : sgr("35", "39"); // brand violet
 export const muted = truecolor ? sgr("38;2;107;112;128", "39") : sgr("2", "22"); // chrome
 export const body = (s) => String(s);
+export const italic = sgr("3", "23");
+const underlineFn = sgr("4", "24");
+const mdCyan = sgr("36", "39"); // inline code / code blocks
 export const reverse = (s) => (useColor ? `\x1b[7m${s}\x1b[27m` : String(s));
 
 // Backward-compatible color map (older call sites).
@@ -232,8 +235,149 @@ export function clearThinking() {
   if (uiTTY) process.stdout.write("\r\x1b[2K");
 }
 
+// ---- markdown rendering (terminal) ---------------------------------------
+// Inline spans: code, links, bold, italic, strikethrough. Code is protected
+// first so its contents are not re-styled.
+function styleText(s) {
+  s = s.replace(/!?\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) => underlineFn(t) + muted(" (" + u + ")"));
+  s = s.replace(/\*\*([^*]+?)\*\*/g, (_, x) => strong(x));
+  s = s.replace(/__([^_]+?)__/g, (_, x) => strong(x));
+  s = s.replace(/\*([^\s*][^*]*?)\*/g, (_, x) => italic(x));
+  s = s.replace(/(^|[^\w])_([^\s_][^_]*?)_/g, (_, p, x) => p + italic(x));
+  s = s.replace(/~~([^~]+?)~~/g, (_, x) => muted(x));
+  return s;
+}
+
+function mdInline(s) {
+  // Split on backtick code spans (odd segments are code, protected from styling).
+  const parts = String(s).split("`");
+  let out = "";
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1 && i < parts.length - 1) out += mdCyan(parts[i]);
+    else if (i % 2 === 1) out += "`" + styleText(parts[i]);
+    else out += styleText(parts[i]);
+  }
+  return out;
+}
+
+function mdBlockLine(raw) {
+  const h = /^(#{1,6})\s+(.*)$/.exec(raw);
+  if (h) return accent(strong(mdInline(h[2])));
+  if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(raw)) return rule();
+  const bq = /^\s*>\s?(.*)$/.exec(raw);
+  if (bq) return muted("│ ") + mdInline(bq[1]);
+  const li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+  if (li) {
+    const bullet = /\d/.test(li[2]) ? accent(li[2] + " ") : accent("• ");
+    return (li[1] || "") + "  " + bullet + mdInline(li[3]);
+  }
+  return mdInline(raw);
+}
+
+function renderMdTable(rows) {
+  const split = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const all = rows.map(split);
+  const isSep = (cells) => cells.length && cells.every((c) => /^:?-{2,}:?$/.test(c) || c === "");
+  let header = null;
+  let bodyRows;
+  if (all.length >= 2 && isSep(all[1])) {
+    header = all[0];
+    bodyRows = all.slice(2);
+  } else if (all.length && isSep(all[0])) {
+    bodyRows = all.slice(1);
+  } else {
+    bodyRows = all;
+  }
+  const ncol = Math.max(...all.map((r) => r.length));
+  const disp = header ? [header, ...bodyRows] : bodyRows;
+  const rendered = disp.map((r) => Array.from({ length: ncol }, (_, c) => mdInline(r[c] || "")));
+  const widths = Array.from({ length: ncol }, (_, c) => Math.max(3, ...rendered.map((r) => vlen(r[c]))));
+  const out = [];
+  rendered.forEach((r, i) => {
+    const isHead = header && i === 0;
+    out.push("  " + r.map((cell, c) => pad(isHead ? strong(cell) : cell, widths[c])).join("  "));
+    if (isHead) out.push("  " + widths.map((w) => muted(GLYPH.rule.repeat(w))).join("  "));
+  });
+  return out.map((l) => l.replace(/[ \t]+$/, "")).join("\n") + "\n";
+}
+
+// Streaming, line-buffered markdown renderer. Complete lines render as they
+// arrive (so it still streams); inline spans and tables need only one line /
+// block of context, so chunk boundaries mid-token are handled correctly.
+function makeMdRenderer(write) {
+  let buffer = "";
+  let inFence = false;
+  let table = [];
+  const flushTable = () => {
+    if (table.length) {
+      write(renderMdTable(table));
+      table = [];
+    }
+  };
+  const doLine = (raw) => {
+    if (/^\s*```/.test(raw)) {
+      flushTable();
+      if (!inFence) {
+        inFence = true;
+        const info = raw.replace(/^\s*```/, "").trim();
+        write(muted("  " + (info || "code")) + "\n");
+      } else {
+        inFence = false;
+      }
+      return;
+    }
+    if (inFence) {
+      write("  " + muted("│ ") + mdCyan(raw) + "\n");
+      return;
+    }
+    if (/^\s*\|.*\|/.test(raw)) {
+      table.push(raw);
+      return;
+    }
+    flushTable();
+    write(mdBlockLine(raw) + "\n");
+  };
+  return {
+    push(text) {
+      buffer += String(text);
+      let i;
+      while ((i = buffer.indexOf("\n")) !== -1) {
+        doLine(buffer.slice(0, i));
+        buffer = buffer.slice(i + 1);
+      }
+    },
+    end() {
+      if (buffer.length) {
+        doLine(buffer);
+        buffer = "";
+      }
+      flushTable();
+      inFence = false;
+    },
+  };
+}
+
+// Full-string render (piped output stays raw, so it remains greppable).
+export function renderMarkdown(text) {
+  if (!uiTTY) return String(text);
+  let out = "";
+  const r = makeMdRenderer((s) => {
+    out += s;
+  });
+  r.push(String(text));
+  r.end();
+  return out.replace(/\n+$/, "");
+}
+
+// Live stream for the agent's answer: renders each completed line as markdown.
+export function assistantStream() {
+  if (!uiTTY) return { push: (t) => process.stdout.write(t), end() {} };
+  process.stdout.write("\n");
+  return makeMdRenderer((s) => process.stdout.write(s));
+}
+
 export function assistant(text) {
-  console.log("\n" + String(text).trim() + "\n");
+  console.log("\n" + renderMarkdown(text) + "\n");
 }
 export function info(text) {
   console.log(muted(text));

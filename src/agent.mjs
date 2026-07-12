@@ -80,6 +80,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
     ui.thinking(order[0]);
     let out;
     let streamed = false;
+    let mdOut = null;
     try {
       out = await completeStream(client, {
         models: order,
@@ -89,8 +90,9 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
           if (!streamed) {
             ui.clearThinking();
             streamed = true;
+            mdOut = ui.assistantStream(); // render the answer as markdown, line by line
           }
-          ui.streamChunk(t);
+          mdOut.push(t);
         },
       });
     } catch (e) {
@@ -99,7 +101,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
       return { ok: false, steps: step, messages };
     }
     ui.clearThinking();
-    if (streamed) ui.streamChunk("\n");
+    if (mdOut) mdOut.end();
     activeModel = out.model;
     if (onModel) onModel(out.model);
     const msg = out.message;
