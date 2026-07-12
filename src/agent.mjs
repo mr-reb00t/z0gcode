@@ -1,4 +1,5 @@
 // The agentic loop: reason on 0G, call tools, feed results back, repeat until done.
+import path from "node:path";
 import { CONFIG, modelChain } from "./config.mjs";
 import { completeStream } from "./client.mjs";
 import { TOOL_DEFS, makeExecutor } from "./tools.mjs";
@@ -51,11 +52,12 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, allowBash, preferredModel, onModel, history, mcp }) {
-  const execute = makeExecutor({ cwd, allowBash });
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, onModel, history, mcp }) {
+  const provDir = sessionDir || path.join(cwd, ".z0g");
+  const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir });
   const toolSet = mcp?.tools?.length ? [...TOOL_DEFS, ...mcp.tools] : TOOL_DEFS;
   const models = modelChain(preferredModel);
-  const prov = makeProvenance(cwd);
+  const prov = makeProvenance(provDir);
   const messages = history && history.length
     ? [...history, { role: "user", content: task }]
     : [{ role: "system", content: systemPrompt(cwd) }, { role: "user", content: task }];

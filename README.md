@@ -63,8 +63,9 @@ No `npm link`? Run it with `node bin/z0g.mjs`. An `npm i -g z0gcode` package is 
 z0g "add a /health endpoint to server.js and test it"   # one-shot task
 z0g --auto "scaffold a Fastify app and run it"           # --auto allows shell + on-chain actions
 z0g goal --auto "make the failing tests pass"            # iterate until a verify command passes
-z0g --continue "now add input validation"                # continue the saved session
-z0g                                                      # interactive session (REPL)
+z0g --continue "now add input validation"                # resume the most recent chat
+z0g --resume                                             # pick a chat to resume (arrow-key picker)
+z0g                                                      # interactive session (picks a chat if the project has any)
 z0g models                                               # rich table of 0G models (add --json)
 z0g skills                                               # list user/project skills (enable|disable)
 z0g doctor                                               # check key, connectivity, model
@@ -72,9 +73,9 @@ z0g attest                                               # show which 0G model w
 z0g serve --mcp                                          # expose z0gcode's 0G tools over MCP
 ```
 
-**In the REPL**, type `/` then **Tab** to autocomplete slash commands: `/goal`, `/model`, `/skills`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/model` opens an arrow-key model picker (saved to `~/.z0gcode/settings.json`); `/skills` lists and toggles your skills. A short intro animation and a "thinking on 0G" indicator play on a color TTY; set `Z0G_NO_ANIM=1` to disable.
+**In the REPL**, type `/` then **Tab** to autocomplete slash commands: `/chats`, `/new`, `/rename`, `/goal`, `/model`, `/skills`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/chats` opens an arrow-key session picker (type to search, `ctrl-r` rename, `ctrl-x` delete); `/new [title]` starts a chat and `/rename <title>` renames the current one. `/model` opens the model picker (saved to `~/.z0gcode/settings.json`); `/skills` lists and toggles your skills. A short intro animation and a "thinking on 0G" indicator play on a color TTY; set `Z0G_NO_ANIM=1` to disable.
 
-**Options:** `--auto`, `--continue`, `--model <id>`, `--verify "<cmd>"`, `--auto-verify`, `--max-steps <n>`, `--cwd <dir>`, and `--json` (with `models`).
+**Options:** `--auto`, `--continue`, `--resume`, `--new`, `--model <id>`, `--verify "<cmd>"`, `--auto-verify`, `--max-steps <n>`, `--cwd <dir>`, and `--json` (with `models`).
 
 ## Features
 
@@ -82,7 +83,7 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 - Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by `--auto`), `update_plan`, and `read_skill`.
 - Colored diffs for every change, an inference HUD (tokens, answering model, `0G Compute (TEE)`), and a visible planning checklist on multi-step tasks.
 - Streaming answers rendered as terminal markdown (bold, headings, lists, tables, inline code, code blocks); piped output stays raw and greppable.
-- Session memory (`--continue`), a goal loop (`z0g goal` re-runs until a verify command passes), and auto-verify.
+- Multiple chats per project, each isolating its own history, plan, and provenance under `.z0g/sessions/`. On open, an arrow-key picker (with search, rename, delete) resumes a chat; `--continue` resumes the most recent, `--resume` shows the picker, `/chats` switches mid-session. Plus a goal loop (`z0g goal` re-runs until a verify command passes) and auto-verify.
 - Reliability on a decentralized backend: app-level multi-model fallback, retry and backoff, tool-JSON repair, a loop breaker, and model escalation.
 
 **0G-native**
@@ -108,7 +109,7 @@ npm run verify   # calls the Router directly, confirms tool-calling on the 0G co
 
 ## Roadmap
 
-Shipped: streaming with markdown rendering, session memory, planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified), MCP both ways, the model catalog and arrow-key picker, and user skills.
+Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified), MCP both ways, the model catalog and arrow-key picker, and user skills.
 
 Next:
 - INFT mint (ERC-7857) and anchoring the provenance manifest on 0G Chain.

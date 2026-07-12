@@ -10,7 +10,10 @@ import { makeClient } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
 import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
-import { saveSession, loadSession } from "../src/session.mjs";
+import {
+  sessionDir, listSessions, mostRecent, createSession,
+  readMessages, saveMessages, renameSession, deleteSession, migrateLegacy, ensureGitignore, pruneEmptySync,
+} from "../src/sessions.mjs";
 import { loadPlan } from "../src/plan.mjs";
 import { loadMcp } from "../src/mcp.mjs";
 import { saveSetting } from "../src/settings.mjs";
@@ -63,6 +66,9 @@ function helpText() {
 const SLASH_COMMANDS = [
   ["/help", "Show commands"],
   ["/clear", "Reset the conversation context"],
+  ["/chats", "Switch chat (arrow-key picker, search, rename, delete)"],
+  ["/new", "Start a new chat (/new [title])"],
+  ["/rename", "Rename the current chat (/rename <title>)"],
   ["/model", "Pick the active 0G model (saved to settings)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
@@ -103,6 +109,90 @@ async function chatModelsFor(client, current) {
   }
 }
 
+const interactiveTTY = () => ui.interactive && typeof process.stdin.setRawMode === "function";
+
+// One-shot line prompt (used for rename/delete confirmation inside the picker).
+// Isolate the outer (paused) REPL readline's keypress listeners while we read,
+// or it buffers this input and replays it as a spurious task on resume.
+function ask(question) {
+  return new Promise((resolve) => {
+    const saved = process.stdin.listeners("keypress").slice();
+    for (const l of saved) process.stdin.removeListener("keypress", l);
+    const r = readline.createInterface({ input: process.stdin, output: process.stdout });
+    r.question(question, (a) => {
+      r.close();
+      for (const l of saved) process.stdin.on("keypress", l);
+      resolve(a);
+    });
+  });
+}
+
+// The arrow-key session picker with search, rename (ctrl-r) and delete (ctrl-x).
+// Returns a session id, "__new__", or "__cancel__".
+async function sessionPickerLoop(cwd, currentId) {
+  while (true) {
+    const sessions = listSessions(cwd);
+    const items = [{ __new: true }, ...sessions];
+    let initial = 1 <= sessions.length ? 1 : 0;
+    if (currentId) {
+      const at = items.findIndex((it) => it.id === currentId);
+      if (at >= 0) initial = at;
+    }
+    const res = await arrowSelect({
+      items,
+      initialIndex: initial,
+      renderFrame: (its, i, c) => ui.sessionPickerFrame(its, i, c),
+      clearOnExit: true,
+      filterable: true,
+      filterText: (it) => (it.__new ? "" : it.title), // hide "New chat" while searching
+      onActionKey: (key) =>
+        key.ctrl && key.name === "r" ? "rename" : key.ctrl && key.name === "x" ? "delete" : null,
+    });
+    if (res === undefined) return "__cancel__";
+    if (res.__action === "rename") {
+      if (res.item && !res.item.__new) {
+        const t = (await ask("  new title: ")).trim();
+        if (t) await renameSession(cwd, res.item.id, t);
+      }
+      continue;
+    }
+    if (res.__action === "delete") {
+      if (res.item && !res.item.__new) {
+        const a = (await ask(`  delete "${res.item.title}"? (y/N) `)).trim();
+        if (/^y/i.test(a)) await deleteSession(cwd, res.item.id);
+      }
+      continue;
+    }
+    if (res.__new) return "__new__";
+    return res.id;
+  }
+}
+
+// Resolve which session to use, based on flags and whether a picker applies.
+// Returns { id, dir, history } or null if the user cancelled the picker.
+async function openSession(cwd, flags, { pickerOnOpen = false } = {}) {
+  await migrateLegacy(cwd);
+  await ensureGitignore(cwd);
+  const sessions = listSessions(cwd);
+  const load = async (id) => ({ id, dir: sessionDir(cwd, id), history: await readMessages(cwd, id) });
+  const fresh = async () => {
+    const s = await createSession(cwd, {});
+    return { id: s.id, dir: s.dir, history: null };
+  };
+  if (flags.new) return await fresh();
+  if (flags.cont) return sessions.length ? await load(sessions[0].id) : await fresh();
+  if ((flags.resume || pickerOnOpen) && sessions.length) {
+    if (interactiveTTY()) {
+      const chosen = await sessionPickerLoop(cwd, null);
+      if (chosen === "__cancel__") return null;
+      if (chosen === "__new__") return await fresh();
+      return await load(chosen);
+    }
+    return await load(sessions[0].id); // non-interactive: most recent
+  }
+  return await fresh();
+}
+
 function parse(argv) {
   const flags = { auto: false, cont: false };
   const positional = [];
@@ -113,6 +203,8 @@ function parse(argv) {
     else if (a === "--json") flags.json = true;
     else if (a === "--auto-verify") flags.autoVerify = true;
     else if (a === "--continue") flags.cont = true;
+    else if (a === "--resume") flags.resume = true;
+    else if (a === "--new") flags.new = true;
     else if (a === "--model") flags.model = argv[++i];
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
@@ -223,8 +315,8 @@ async function cmdDoctor() {
   }
 }
 
-async function printAttest(cwd) {
-  const man = await loadProvenance(cwd);
+async function printAttest(dir) {
+  const man = await loadProvenance(dir);
   if (!man || !Array.isArray(man.entries) || man.entries.length === 0) {
     console.log(ui.muted("No provenance yet. Run a task that edits files, then attest."));
     return;
@@ -294,19 +386,28 @@ async function runVerify(cwd) {
 
 async function runTask(task, flags) {
   const cwd = resolveCwd(flags);
-  // Auto-verify: a normal run becomes self-correcting when a verify command is present.
-  const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
-  if (verifyCmd) {
-    await runGoal({ client: makeClient(), objective: task, cwd, allowBash: flags.auto, preferredModel: flags.model, verifyCmd, maxIters: 3 });
-    return;
+  const opened = await openSession(cwd, flags);
+  if (!opened) return; // picker cancelled
+  const { id: sessionId, dir: sessionDirPath } = opened;
+  const onSig = () => { pruneEmptySync(cwd, sessionId); process.exit(130); };
+  process.once("SIGINT", onSig);
+  try {
+    // Auto-verify: a normal run becomes self-correcting when a verify command is present.
+    const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
+    if (verifyCmd) {
+      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, verifyCmd, maxIters: 3, history: opened.history });
+      return;
+    }
+    const client = makeClient();
+    const mcp = await loadMcp(cwd);
+    if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, history: opened.history, mcp });
+    if (res?.messages) await saveMessages(cwd, sessionId, res.messages);
+    await mcp?.close();
+  } finally {
+    process.removeListener("SIGINT", onSig);
+    pruneEmptySync(cwd, sessionId); // drop a session that produced no messages
   }
-  const client = makeClient();
-  const history = flags.cont ? await loadSession(cwd) : null;
-  const mcp = await loadMcp(cwd);
-  if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-  const res = await runAgent({ client, task, cwd, allowBash: flags.auto, preferredModel: flags.model, history, mcp });
-  if (res?.messages) await saveSession(cwd, res.messages);
-  await mcp?.close();
 }
 
 async function cmdGoal(objective, flags) {
@@ -316,18 +417,41 @@ async function cmdGoal(objective, flags) {
   }
   const client = makeClient();
   const cwd = resolveCwd(flags);
-  const verifyCmd = flags.verify || detectVerifyCmd(cwd);
-  if (!flags.auto) ui.info("tip: run goal with --auto so the agent can run and verify its own work.");
-  await runGoal({ client, objective, cwd, allowBash: flags.auto, preferredModel: flags.model, verifyCmd, maxIters: 3 });
+  const opened = await openSession(cwd, flags);
+  if (!opened) return;
+  const onSig = () => { pruneEmptySync(cwd, opened.id); process.exit(130); };
+  process.once("SIGINT", onSig);
+  try {
+    const verifyCmd = flags.verify || detectVerifyCmd(cwd);
+    if (!flags.auto) ui.info("tip: run goal with --auto so the agent can run and verify its own work.");
+    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, verifyCmd, maxIters: 3, history: opened.history });
+  } finally {
+    process.removeListener("SIGINT", onSig);
+    pruneEmptySync(cwd, opened.id);
+  }
 }
 
 async function repl(flags) {
   const client = makeClient();
   const cwd = resolveCwd(flags);
-  let history = flags.cont ? await loadSession(cwd) : null;
+  const opened = await openSession(cwd, flags, { pickerOnOpen: true });
+  if (!opened) return; // cancelled the picker on open
+  let sessionId = opened.id;
+  let sessionDirPath = opened.dir;
+  let history = opened.history;
   let model = flags.model;
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
+
+  // Delete a session that never persisted any messages (empty "New chat").
+  const pruneIfEmpty = async (id) => {
+    const s = listSessions(cwd).find((x) => x.id === id);
+    if (s && s.messageCount === 0) {
+      try { await deleteSession(cwd, id); } catch {}
+    }
+  };
+  const sessTitle = (id) => listSessions(cwd).find((s) => s.id === id)?.title || "New chat";
+
   const promptStr = ui.strong("z0g") + ui.accent(" " + ui.GLYPH.chevron) + " ";
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: promptStr, completer: slashCompleter });
   let pendingModels = null; // when set, the next line is a /model selection
@@ -357,14 +481,20 @@ async function repl(flags) {
       const arg = rest.join(" ");
       if (cmd === "exit" || cmd === "quit") break;
       else if (cmd === "help" || cmd === "") console.log(slashMenu());
-      else if (cmd === "clear") { history = null; ui.info("context cleared"); }
+      else if (cmd === "clear") {
+        if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
+        await pruneIfEmpty(sessionId);
+        const s = await createSession(cwd, {});
+        sessionId = s.id; sessionDirPath = s.dir; history = null;
+        ui.info("context cleared");
+      }
       else if (cmd === "model") {
         if (arg) { model = arg; saveSetting("model", arg); console.log(ui.pickConfirm(arg)); }
         else {
           const cur = model || CONFIG.model;
           const models = await chatModelsFor(client, cur);
           if (models && models.length) {
-            if (ui.interactive && typeof process.stdin.setRawMode === "function") {
+            if (interactiveTTY()) {
               rl.pause();
               const chosen = await arrowSelect({
                 items: models,
@@ -383,23 +513,67 @@ async function repl(flags) {
         }
       }
       else if (cmd === "skills") cmdSkills(cwd, arg);
-      else if (cmd === "attest") await printAttest(cwd);
-      else if (cmd === "plan") { const p = await loadPlan(cwd); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
+      else if (cmd === "chats") {
+        if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
+        if (interactiveTTY()) {
+          rl.pause();
+          const chosen = await sessionPickerLoop(cwd, sessionId);
+          rl.resume();
+          if (chosen && chosen !== "__cancel__") {
+            if (chosen !== sessionId) await pruneIfEmpty(sessionId); // never prune the one we keep
+            if (chosen === "__new__") {
+              const s = await createSession(cwd, {});
+              sessionId = s.id; sessionDirPath = s.dir; history = null;
+              ui.info("new chat");
+            } else {
+              sessionId = chosen; sessionDirPath = sessionDir(cwd, chosen);
+              history = await readMessages(cwd, chosen);
+              ui.info("switched to: " + sessTitle(sessionId));
+            }
+          } else if (!listSessions(cwd).some((s) => s.id === sessionId)) {
+            // Active session was deleted inside the picker, then cancelled: re-point.
+            const rid = mostRecent(cwd);
+            if (rid) {
+              sessionId = rid; sessionDirPath = sessionDir(cwd, rid);
+              history = await readMessages(cwd, rid);
+              ui.info("switched to: " + sessTitle(sessionId));
+            } else {
+              const s = await createSession(cwd, {});
+              sessionId = s.id; sessionDirPath = s.dir; history = null;
+              ui.info("new chat");
+            }
+          }
+        } else ui.info("switching sessions needs an interactive terminal");
+      }
+      else if (cmd === "new") {
+        if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
+        await pruneIfEmpty(sessionId);
+        const s = await createSession(cwd, { title: arg || "" });
+        sessionId = s.id; sessionDirPath = s.dir; history = null;
+        ui.info("new chat" + (arg ? ": " + arg : ""));
+      }
+      else if (cmd === "rename") {
+        if (arg) { await renameSession(cwd, sessionId, arg); ui.info("renamed to: " + arg); }
+        else ui.info("usage: /rename <title>");
+      }
+      else if (cmd === "attest") await printAttest(sessionDirPath);
+      else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, allowBash: flags.auto, preferredModel: model, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3 });
-        history = await loadSession(cwd) || history;
+        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        history = await readMessages(cwd, sessionId) || history;
       } else ui.info("unknown command; /help for the list");
       rl.prompt();
       continue;
     }
 
-    const res = await runAgent({ client, task: input, cwd, allowBash: flags.auto, preferredModel: model, history, mcp });
+    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, history, mcp });
     history = res.messages;
-    await saveSession(cwd, history);
+    await saveMessages(cwd, sessionId, history);
     rl.prompt();
   }
   rl.close();
+  await pruneIfEmpty(sessionId);
   await mcp?.close();
 }
 
@@ -413,7 +587,12 @@ async function main() {
     if (sub === "models") return await cmdModels(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
-    if (sub === "attest") return await printAttest(resolveCwd(flags));
+    if (sub === "attest") {
+      const acwd = resolveCwd(flags);
+      await migrateLegacy(acwd);
+      const id = mostRecent(acwd);
+      return await printAttest(id ? sessionDir(acwd, id) : path.join(acwd, ".z0g"));
+    }
     if (sub === "serve") {
       if (flags.mcp) {
         const { startMcpServer } = await import("../src/mcp-server.mjs");

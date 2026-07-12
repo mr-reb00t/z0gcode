@@ -13,6 +13,7 @@ bin/z0g.mjs        CLI: run / models / doctor / attest / interactive; flags; bra
        ├─ src/user-skills.mjs user skills: discover ~/.z0gcode/skills + .z0g/skills, inject + read
        ├─ src/models-info.mjs model catalog: fetch + normalize /v1/models (price, ctx, TEE, discount)
        ├─ src/prompt.mjs      arrowSelect: raw-mode arrow-key picker (used by /model)
+       ├─ src/sessions.mjs    multiple chats per project (.z0g/sessions/<id>/, resume picker)
        ├─ src/settings.mjs    ~/.z0gcode/settings.json (model choice, disabled skills)
        ├─ src/config.mjs      defaults (0G baked in: router URL, model 0gm-1.0, fallbacks)
        └─ src/ui.mjs          ANSI UI: palette roles, glyphs, tables, colored diffs, HUD, banner

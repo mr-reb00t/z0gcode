@@ -521,7 +521,7 @@ export function modelPickerFrame(items, index, currentId) {
   // Window to the terminal height: the frame must never exceed the viewport,
   // or arrowSelect's in-place rewind (moveCursor up) desyncs and corrupts it.
   const CHROME = 8; // hint + blank + colheader + 2 "more" rows + blank + 2 detail lines
-  const win = Math.max(1, termRows - CHROME);
+  const win = Math.max(1, termRows - CHROME - 1); // -1 for arrowSelect's trailing newline
   let start = 0;
   if (items.length > win) start = Math.min(Math.max(0, index - (win >> 1)), items.length - win);
   const end = Math.min(items.length, start + win);
@@ -564,6 +564,67 @@ export function modelPickerFrame(items, index, currentId) {
 }
 export function pickConfirm(id) {
   return "  " + ok(GLYPH.ok) + " model set to " + strong(id) + muted("  (saved)");
+}
+
+// ---- session picker ------------------------------------------------------
+export function relTime(iso) {
+  const t = Date.parse(iso);
+  if (!t) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + "d ago";
+  const w = Math.floor(d / 7);
+  if (w < 5) return w + "w ago";
+  return Math.floor(d / 30) + "mo ago";
+}
+
+// Items are [{ __new: true }, ...sessions{ id, title, updated, messageCount }].
+export function sessionPickerFrame(items, index, ctx = {}) {
+  const { filter = "", filtering = false } = ctx;
+  const W = Math.max(24, Math.min(process.stdout.columns || 80, 100));
+  const termRows = process.stdout.rows || 24;
+  const lines = [];
+  const tick = GLYPH.tick ? accent(GLYPH.tick + " ") : "";
+  lines.push(clip(tick + strong("Sessions") + muted("   " + GLYPH.up + "/" + GLYPH.down + " move · enter open · type to search · ctrl-r rename · ctrl-x delete · esc"), W));
+  lines.push("");
+
+  const CHROME = 6; // header + blank + 2 "more" rows + blank + footer
+  const win = Math.max(1, termRows - CHROME - 1); // -1 for arrowSelect's trailing newline
+  let start = 0;
+  if (items.length > win) start = Math.min(Math.max(0, index - (win >> 1)), items.length - win);
+  const end = Math.min(items.length, start + win);
+
+  lines.push(start > 0 ? "  " + muted(GLYPH.up + " " + start + " more") : "");
+  for (let i = start; i < end; i++) {
+    const it = items[i];
+    const sel = i === index;
+    const gutter = sel ? (useColor ? accent(GLYPH.chevron + " ") : GLYPH.point + " ") : "  ";
+    let painted;
+    if (it.__new) {
+      const t = "+ New chat";
+      painted = sel ? (useColor ? reverse(t + " ") : t) : accent(t);
+    } else {
+      const title = pad(trunc(it.title || "New chat", 40), 40);
+      const n = it.messageCount || 0;
+      const meta = relTime(it.updated) + " · " + n + " msg" + (n === 1 ? "" : "s");
+      painted = sel ? (useColor ? reverse(title + "  " + meta + " ") : title + "  " + meta) : title + muted("  " + meta);
+    }
+    lines.push(clip(gutter + painted, W));
+  }
+  lines.push(end < items.length ? "  " + muted(GLYPH.down + " " + (items.length - end) + " more") : "");
+  lines.push("");
+
+  const nSessions = items.filter((it) => !it.__new).length;
+  const footer = filtering && filter
+    ? 'search: "' + filter + '"  ·  ' + nSessions + " match" + (nSessions === 1 ? "" : "es")
+    : nSessions + " session" + (nSessions === 1 ? "" : "s");
+  lines.push("  " + muted(footer));
+  return lines.join("\n");
 }
 
 // ---- diff (unchanged behavior, role colors) ------------------------------

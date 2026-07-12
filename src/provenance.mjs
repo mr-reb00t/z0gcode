@@ -8,10 +8,11 @@ import path from "node:path";
 
 const sha256 = (s) => crypto.createHash("sha256").update(s ?? "", "utf8").digest("hex");
 
-const MANIFEST = (cwd) => path.join(cwd, ".z0g", "provenance.json");
+// `dir` is the session directory (.z0g/sessions/<id>) so provenance is per-chat.
+const MANIFEST = (dir) => path.join(dir, "provenance.json");
 
-export function makeProvenance(cwd) {
-  const file = MANIFEST(cwd);
+export function makeProvenance(dir) {
+  const file = MANIFEST(dir);
   const entries = [];
   return {
     async record({ pathRel, before, after, model, responseId }) {
@@ -32,9 +33,9 @@ export function makeProvenance(cwd) {
   };
 }
 
-export async function loadProvenance(cwd) {
+export async function loadProvenance(dir) {
   try {
-    return JSON.parse(await fs.readFile(MANIFEST(cwd), "utf8"));
+    return JSON.parse(await fs.readFile(MANIFEST(dir), "utf8"));
   } catch {
     return null;
   }

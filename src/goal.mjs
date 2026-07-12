@@ -2,6 +2,7 @@
 // back and re-run, until it passes or the iteration budget is spent.
 import { exec } from "node:child_process";
 import { runAgent } from "./agent.mjs";
+import { saveMessages } from "./sessions.mjs";
 import * as ui from "./ui.mjs";
 
 function runCmd(cmd, cwd) {
@@ -13,13 +14,16 @@ function runCmd(cmd, cwd) {
   });
 }
 
-export async function runGoal({ client, objective, cwd, allowBash, preferredModel, verifyCmd, maxIters = 3 }) {
-  let history = null;
+export async function runGoal({ client, objective, cwd, sessionId, sessionDir, allowBash, preferredModel, verifyCmd, maxIters = 3, history: historyParam = null }) {
+  let history = historyParam ?? null;
   let task = objective;
   for (let iter = 1; iter <= maxIters; iter++) {
     console.log(ui.section("Goal", "iteration " + iter + "/" + maxIters));
-    const res = await runAgent({ client, task, cwd, allowBash, preferredModel, history });
+    const res = await runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, history });
     history = res.messages;
+    if (sessionId && Array.isArray(history)) {
+      try { await saveMessages(cwd, sessionId, history); } catch {}
+    }
 
     if (!verifyCmd) {
       ui.info("  no verify command configured; done after one pass.");

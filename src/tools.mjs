@@ -166,7 +166,8 @@ function safeResolve(cwd, p) {
   return abs;
 }
 
-export function makeExecutor({ cwd, allowBash }) {
+export function makeExecutor({ cwd, allowBash, sessionDir }) {
+  const planDir = sessionDir || path.join(cwd, ".z0g");
   return async function execute(name, args) {
     try {
       switch (name) {
@@ -223,7 +224,7 @@ export function makeExecutor({ cwd, allowBash }) {
         }
         case "update_plan": {
           const plan = Array.isArray(args.plan) ? args.plan : [];
-          await savePlan(cwd, plan);
+          await savePlan(planDir, plan);
           const done = plan.filter((p) => p.status === "completed").length;
           return { ok: true, summary: `plan ${done}/${plan.length}`, content: "Plan updated.", plan };
         }
