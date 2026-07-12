@@ -60,6 +60,14 @@ export ZOG_API_KEY=<your 0G Router key from https://pc.0g.ai>
 
 Without `npm link` you can run it with `node bin/z0g.mjs`. (An `npm i -g z0gcode` package is on the way.)
 
+Instead of exporting it, you can put the key in a `.env` file in your project (loaded automatically):
+
+```
+ZOG_API_KEY=sk-...
+# optional, only for on-chain actions:
+# ZOG_WALLET_KEY=0x...
+```
+
 ## Usage
 
 ```bash

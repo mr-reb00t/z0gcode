@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // z0gcode CLI: a coding agent whose brain runs on 0G Compute.
+import "../src/env.mjs"; // load .env before config reads process.env
 import readline from "node:readline";
 import path from "node:path";
 import { readFileSync, existsSync } from "node:fs";
