@@ -263,7 +263,7 @@ async function uploadToStorage(cwd, relPath, allowBash) {
   const INDEXER = process.env.ZOG_STORAGE_INDEXER || "https://indexer-storage-turbo.0g.ai";
   try {
     const { ethers } = await import("ethers");
-    const { ZgFile, Indexer } = await import("@0glabs/0g-ts-sdk");
+    const { ZgFile, Indexer } = await import("@0gfoundation/0g-storage-ts-sdk");
     const provider = new ethers.JsonRpcProvider(RPC);
     const wallet = new ethers.Wallet(key, provider);
     const indexer = new Indexer(INDEXER);
@@ -272,18 +272,20 @@ async function uploadToStorage(cwd, relPath, allowBash) {
       const [tree, treeErr] = await file.merkleTree();
       if (treeErr) throw new Error(String(treeErr));
       const root = tree.rootHash();
-      const [tx, upErr] = await indexer.upload(file, RPC, wallet);
+      const [res, upErr] = await indexer.upload(file, RPC, wallet);
       if (upErr) throw new Error(upErr.message || String(upErr));
+      const txHash = res?.txHash || res;
+      const rootHash = res?.rootHash || root;
       return {
         ok: true,
         summary: `uploaded ${relPath} to 0G Storage`,
-        content: `0G Storage root hash: ${root}\ntx: ${tx}\nexplorer: https://chainscan.0g.ai/tx/${tx}`,
+        content: `0G Storage root: ${rootHash}\ntx: ${txHash}\nexplorer: https://chainscan.0g.ai/tx/${txHash}`,
       };
     } finally {
       await file.close();
     }
   } catch (e) {
-    return { ok: false, summary: "0g upload failed", content: `ERROR: ${e.message}. Ensure @0glabs/0g-ts-sdk is installed and the wallet is funded.` };
+    return { ok: false, summary: "0g upload failed", content: `ERROR: ${e.message}. Ensure @0gfoundation/0g-storage-ts-sdk is installed and the wallet is funded.` };
   }
 }
 
