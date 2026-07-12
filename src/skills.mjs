@@ -36,6 +36,7 @@ You are an expert at building on 0G. Key facts (call read_0g_skill for full patt
 - 0G Storage: decentralized storage. SDK @0gfoundation/0g-storage-ts-sdk (ZgFile + Indexer; this is the mainnet-current package, the older @0glabs/0g-ts-sdk reverts on mainnet submit). Upload returns a Merkle root hash; always close the file handle. Mainnet indexer https://indexer-storage-turbo.0g.ai, testnet https://indexer-storage-testnet-turbo.0g.ai.
 - 0G Compute (to consume inference from an app): SDK @0glabs/0g-serving-broker with createZGComputeNetworkBroker(wallet), or simply the OpenAI SDK against the Router.
 - You can publish an artifact to 0G Storage yourself with the upload_0g_storage tool (needs --auto and a funded ZOG_WALLET_KEY); it returns a content root hash.
+- You can deploy a compiled contract to 0G Chain with deploy_0g_chain (needs --auto and ZOG_WALLET_KEY): compile with evmVersion "cancun" and pass its bytecode or an artifact path.
 - Security: never hardcode private keys; read them from env (PRIVATE_KEY) and keep .env in .gitignore.
 
 Skills available via read_0g_skill: ${Object.keys(SKILL_FILES).join(", ")}.

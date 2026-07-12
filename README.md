@@ -38,7 +38,7 @@ It is not a rebrand of a big framework: the agent loop, tools, and CLI are origi
 - **Colored diffs**: every file change is shown as a green/red diff, so you can audit exactly what the agent did.
 - **Inference HUD**: a footer after each turn with token usage, the answering model, and the `0G Compute (TEE)` marker.
 - **Verifiable provenance (`z0g attest`)**: z0gcode records `.z0g/provenance.json` binding each change (before/after hash) to the 0G model and response id that produced it. A closed-provider CLI cannot prove which model wrote which code. Full TEE-quote verification is roadmap.
-- **Native 0G action**: `upload_0g_storage` publishes an artifact to 0G Storage and returns its content root hash (behind `--auto` + `ZOG_WALLET_KEY`).
+- **Native 0G actions**: `upload_0g_storage` (publish an artifact to 0G Storage, returns a content root hash) and `deploy_0g_chain` (deploy a compiled contract to 0G Chain, returns the address + tx), both behind `--auto` + `ZOG_WALLET_KEY` and verified on 0G mainnet.
 - **Reliability on a decentralized backend**: app-level multi-model fallback, retry/backoff, tool-JSON repair, a loop breaker, and model escalation (a stuck turn escalates to a stronger 0G model instead of looping).
 - **Streaming**: the model's output streams token by token, so the agent feels alive.
 - **Session memory**: the conversation persists per directory; `--continue` resumes it and the REPL keeps context across prompts.

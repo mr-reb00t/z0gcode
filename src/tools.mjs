@@ -106,6 +106,22 @@ export const TOOL_DEFS = [
   {
     type: "function",
     function: {
+      name: "deploy_0g_chain",
+      description: "Deploy a compiled contract to 0G Chain mainnet (chainId 16661). Provide { bytecode, abi?, args? } or { artifact } (path to a Hardhat/Foundry JSON with abi+bytecode). Writes on-chain: needs --auto and a funded ZOG_WALLET_KEY.",
+      parameters: {
+        type: "object",
+        properties: {
+          bytecode: { type: "string", description: "Contract creation bytecode (0x...)" },
+          abi: { type: "array", description: "Contract ABI (optional if no constructor args)" },
+          args: { type: "array", description: "Constructor arguments" },
+          artifact: { type: "string", description: "Path to a compiled artifact JSON (abi + bytecode)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "update_plan",
       description: "Lay out or update a checklist for a multi-step task. Call it at the start of non-trivial work and whenever a step's status changes. Keep exactly one step in_progress.",
       parameters: {
@@ -200,6 +216,9 @@ export function makeExecutor({ cwd, allowBash }) {
         }
         case "upload_0g_storage": {
           return await uploadToStorage(cwd, args.path, allowBash);
+        }
+        case "deploy_0g_chain": {
+          return await deployToChain(cwd, args, allowBash);
         }
         case "update_plan": {
           const plan = Array.isArray(args.plan) ? args.plan : [];
@@ -317,6 +336,45 @@ async function uploadToStorage(cwd, relPath, allowBash) {
     }
   } catch (e) {
     return { ok: false, summary: "0g upload failed", content: `ERROR: ${e.message}. Ensure @0gfoundation/0g-storage-ts-sdk is installed and the wallet is funded.` };
+  }
+}
+
+async function deployToChain(cwd, args, allowBash) {
+  if (!allowBash) {
+    return { ok: false, summary: "deploy denied", content: "deploy_0g_chain writes on-chain. Re-run z0gcode with --auto to allow it." };
+  }
+  const key = process.env.ZOG_WALLET_KEY;
+  if (!key) {
+    return { ok: false, summary: "no wallet", content: "Set ZOG_WALLET_KEY to a funded 0G mainnet private key to deploy." };
+  }
+  const RPC = process.env.ZOG_EVM_RPC || "https://evmrpc.0g.ai";
+  try {
+    const { ethers } = await import("ethers");
+    let abi = args.abi || [];
+    let bytecode = args.bytecode;
+    if (args.artifact) {
+      const raw = JSON.parse(await fs.readFile(safeResolve(cwd, args.artifact), "utf8"));
+      abi = raw.abi || abi;
+      bytecode = raw.bytecode?.object || raw.bytecode || bytecode;
+    }
+    if (!bytecode) {
+      return { ok: false, summary: "no bytecode", content: "Provide 'bytecode' or an 'artifact' path with abi + bytecode." };
+    }
+    if (typeof bytecode === "string" && !bytecode.startsWith("0x")) bytecode = "0x" + bytecode;
+    const provider = new ethers.JsonRpcProvider(RPC);
+    const wallet = new ethers.Wallet(key, provider);
+    const factory = new ethers.ContractFactory(abi, bytecode, wallet);
+    const contract = await factory.deploy(...(args.args || []));
+    await contract.waitForDeployment();
+    const addr = await contract.getAddress();
+    const tx = contract.deploymentTransaction()?.hash;
+    return {
+      ok: true,
+      summary: `deployed to 0G Chain`,
+      content: `contract: ${addr}\ntx: ${tx}\nexplorer: https://chainscan.0g.ai/address/${addr}`,
+    };
+  } catch (e) {
+    return { ok: false, summary: "0g deploy failed", content: `ERROR: ${e.message}. Ensure ethers is installed, the wallet is funded, and contracts are compiled with evmVersion cancun.` };
   }
 }
 
