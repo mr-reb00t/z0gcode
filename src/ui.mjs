@@ -114,6 +114,91 @@ export function banner(model, baseURL) {
   );
 }
 
+// ---- animated intro ------------------------------------------------------
+// The barred-zero logo as a per-cell mask so we can fade + shine it. Each row
+// is [text, role] segments; role W = foam, V = violet. Labels sit to the right.
+const VIOLET_RGB = [167, 139, 255];
+const FOAM_RGB = [242, 241, 236];
+const SHINE_RGB = [255, 255, 255];
+const LOGO = [
+  [["█████   ", "W"], ["███", "V"], ["    ████", "W"]],
+  [["   ██  ", "W"], ["█  /█", "V"], ["  █", "W"]],
+  [["  ██   ", "W"], ["█ / █", "V"], ["  █  ██", "W"]],
+  [[" ██    ", "W"], ["█/  █", "V"], ["  █   █", "W"]],
+  [["█████   ", "W"], ["███", "V"], ["    ████", "W"]],
+];
+const LOGO_LABELS = ["", "", "z0gcode v0.2", "coding agent on 0G", ""];
+const LOGO_H = LOGO.length;
+
+const scaleRgb = ([r, g, b], f) => [Math.round(r * f), Math.round(g * f), Math.round(b * f)];
+const tcRgb = ([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const animDisabled = () =>
+  !!process.env.Z0G_NO_ANIM || cols < 50 || !truecolor;
+
+function renderLogoLine(rowIdx, brightness, sweepCol) {
+  let out = "";
+  let col = 0;
+  for (const [text, role] of LOGO[rowIdx]) {
+    for (const ch of text) {
+      if (ch === " ") {
+        out += " ";
+        col++;
+        continue;
+      }
+      const lit = sweepCol != null && (col === sweepCol || col === sweepCol - 1);
+      const rgb = lit ? SHINE_RGB : scaleRgb(role === "V" ? VIOLET_RGB : FOAM_RGB, brightness);
+      out += tcRgb(rgb) + ch;
+      col++;
+    }
+  }
+  out += "\x1b[0m";
+  const label = LOGO_LABELS[rowIdx];
+  if (label) out += "   " + muted(label);
+  return out + "\x1b[K";
+}
+
+// Play the intro, then leave the finished banner + strapline on screen. Falls
+// back to the static banner when animation is off (piped, NO_COLOR, narrow,
+// no truecolor, or Z0G_NO_ANIM). Never leaves the cursor hidden.
+export async function bannerAnimated(model, baseURL) {
+  if (!useColor || !uiTTY || animDisabled()) {
+    banner(model, baseURL);
+    return;
+  }
+  const drawFrame = (brightness, sweepCol) => {
+    let buf = "";
+    for (let i = 0; i < LOGO_H; i++) buf += renderLogoLine(i, brightness, sweepCol) + "\n";
+    process.stdout.write(buf);
+  };
+  const redraw = (brightness, sweepCol) => {
+    process.stdout.write(`\x1b[${LOGO_H}A`);
+    drawFrame(brightness, sweepCol);
+  };
+  try {
+    process.stdout.write("\x1b[?25l"); // hide cursor
+    const fades = [0.28, 0.5, 0.74, 1.0];
+    drawFrame(fades[0], null);
+    for (let k = 1; k < fades.length; k++) {
+      await sleep(45);
+      redraw(fades[k], null);
+    }
+    for (let c = 0; c <= 22; c++) {
+      await sleep(15);
+      redraw(1.0, c);
+    }
+    redraw(1.0, null);
+  } catch {
+    // fall through to a clean final state
+  } finally {
+    process.stdout.write("\x1b[?25h"); // always restore cursor
+  }
+  console.log(
+    muted("  model ") + accent(model) + muted("  · " + host(baseURL) + "  ") +
+    accent(GLYPH.seal) + muted(" TEE") + "\n"
+  );
+}
+
 // ---- agent-run feedback --------------------------------------------------
 export function toolCall(name, summary) {
   const room = Math.max(12, cols - 8 - vlen(name));
@@ -132,8 +217,10 @@ export function thinking(model) {
   if (!uiTTY) return;
   clearThinking();
   spinTimer = setInterval(() => {
-    const f = SPIN[spinFrame++ % SPIN.length];
-    process.stdout.write("\r" + accent(f) + muted(" on 0G (" + model + ")") + "  ");
+    const f = SPIN[spinFrame % SPIN.length];
+    const dots = ".".repeat(1 + ((spinFrame >> 1) % 3)); // . .. ... cycling
+    spinFrame++;
+    process.stdout.write("\r\x1b[K" + accent(f) + " " + muted("thinking on 0G · " + model) + accent(dots));
   }, 80);
   if (spinTimer.unref) spinTimer.unref();
 }

@@ -88,6 +88,8 @@ In the interactive session, type `/` and press **Tab** to autocomplete slash com
 
 Your model choice is saved in `~/.z0gcode/settings.json` (like Claude Code's settings), so it persists across sessions. A project-level `.z0g/settings.json` overrides it.
 
+The interactive session opens with a short intro animation and shows an animated "thinking on 0G" indicator while the model works. Animations run only on a color TTY; set `Z0G_NO_ANIM=1` to turn them off.
+
 Options: `--auto` (allow `run_bash` and on-chain actions), `--continue`, `--model <id>`, `--verify "<cmd>"`, `--max-steps <n>`, `--cwd <dir>`.
 
 ## How the brain runs on 0G

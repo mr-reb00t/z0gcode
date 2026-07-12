@@ -430,8 +430,11 @@ async function main() {
 
     const task = sub === "run" ? positional.slice(1).join(" ") : positional.join(" ");
     if (!task) {
+      if (process.stdin.isTTY) {
+        await ui.bannerAnimated(flags.model || CONFIG.model, CONFIG.baseURL);
+        return await repl(flags);
+      }
       ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);
-      if (process.stdin.isTTY) return await repl(flags);
       console.log(helpText());
       return;
     }
