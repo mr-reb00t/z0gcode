@@ -1,17 +1,14 @@
 # z0gcode
 
+<p align="center">
+  <img src="assets/logo/z0gcode-banner.svg" alt="z0gcode: coding agent on 0G" width="560">
+</p>
+
 **A terminal coding agent whose brain runs on 0G Compute.** Private, verifiable AI for developers, powered by 0G's own coding model, and an expert at building on the 0G stack.
 
 Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infrastructure & Tooling).
 
 ```
-█████   ███    ████
-   ██  █  /█  █
-  ██   █ / █  █  ██   z0gcode v0.2
- ██    █/  █  █   █   coding agent on 0G
-█████   ███    ████
-  model 0gm-1.0-35b-a3b  · router-api.0g.ai  ◈ TEE
-
   › read_skill chain
     ✓ skill: chain
   › write_file hardhat.config.js
