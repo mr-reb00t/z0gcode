@@ -1,110 +1,359 @@
-// Minimal ANSI UI helpers. No dependencies.
-const useColor = process.stdout.isTTY && process.env.NO_COLOR === undefined;
-const wrap = (code) => (s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : String(s));
+// z0gcode terminal UI. Dependency-free ANSI. One visual system, degrades
+// cleanly under NO_COLOR and when piped (non-TTY). No em-dashes anywhere.
+import { fmtCtx, orderChatModels, mediaModels } from "./models-info.mjs";
 
+// ---- environment probes (computed once) ---------------------------------
+export const useColor = !!process.stdout.isTTY && process.env.NO_COLOR === undefined;
+export const uiTTY = !!process.stdout.isTTY;
+export const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+const truecolor = /truecolor|24bit/i.test(process.env.COLORTERM || "");
+export const cols = Math.max(40, Math.min(process.stdout.columns || 80, 100));
+const RULE_W = Math.min(cols, 78);
+
+// ---- palette roles (semantic; never emit a raw color at a call site) -----
+const sgr = (open, close) => (s) => (useColor ? `\x1b[${open}m${s}\x1b[${close}m` : String(s));
+export const strong = sgr("1", "22"); // bold, background-agnostic
+export const ok = sgr("32", "39");
+export const warn = sgr("33", "39");
+export const err = sgr("31", "39");
+export const accent = truecolor ? sgr("38;2;167;139;255", "39") : sgr("35", "39"); // brand violet
+export const muted = truecolor ? sgr("38;2;107;112;128", "39") : sgr("2", "22"); // chrome
+export const body = (s) => String(s);
+export const reverse = (s) => (useColor ? `\x1b[7m${s}\x1b[27m` : String(s));
+
+// Backward-compatible color map (older call sites).
 export const color = {
-  dim: wrap("2"),
-  bold: wrap("1"),
-  cyan: wrap("36"),
-  green: wrap("32"),
-  yellow: wrap("33"),
-  red: wrap("31"),
-  magenta: wrap("35"),
-  gray: wrap("90"),
-  blue: wrap("34"),
+  dim: muted, bold: strong, cyan: accent, green: ok, yellow: warn,
+  red: err, magenta: accent, gray: muted, blue: sgr("34", "39"),
 };
 
-// Truecolor helpers for the brand palette (LOGO.md).
-const tc = (r, g, b) => (useColor ? `\x1b[38;2;${r};${g};${b}m` : "");
-const RESET = useColor ? "\x1b[0m" : "";
+// ---- glyph vocabulary (unicode on a TTY, ascii when piped) ---------------
+export const GLYPH = uiTTY
+  ? { tick: "▍", chevron: "›", seal: "◈", priv: "◆", ver: "◇", open: "·",
+      ok: "✓", no: "✗", run: "▶", pending: "○", current: "●", point: "»",
+      ellipsis: "…", rule: "─", up: "↑", down: "↓" }
+  : { tick: "", chevron: ">", seal: "*", priv: "", ver: "", open: ".",
+      ok: "ok", no: "x", run: ">", pending: "o", current: "*", point: ">",
+      ellipsis: "...", rule: "-", up: "^", down: "v" };
 
-// "Zero Slash" splash: the barred 0 (circle = 0 of 0G, violet slash = Z of Zog).
+// ---- measuring / padding / formatters ------------------------------------
+const STRIP = /\x1b\[[0-9;]*m/g;
+export const vlen = (s) => String(s).replace(STRIP, "").length;
+export function pad(s, w, align = "left") {
+  const l = vlen(s);
+  if (l >= w) return s;
+  const sp = " ".repeat(w - l);
+  return align === "right" ? sp + s : s + sp;
+}
+export function trunc(s, w) {
+  s = String(s);
+  return s.length <= w ? s : s.slice(0, w - 1) + GLYPH.ellipsis;
+}
+// ANSI-aware clip: truncate to w visible columns, preserving color codes.
+export function clip(s, w) {
+  s = String(s);
+  if (vlen(s) <= w) return s;
+  let out = "";
+  let vis = 0;
+  const re = /(\x1b\[[0-9;]*m)|([\s\S])/g;
+  let mch;
+  while ((mch = re.exec(s))) {
+    if (mch[1]) {
+      out += mch[1];
+      continue;
+    }
+    if (vis >= w - 1) break;
+    out += mch[2];
+    vis++;
+  }
+  return out + GLYPH.ellipsis + (useColor ? "\x1b[0m" : "");
+}
+export function fmtUsd(perM) {
+  if (perM == null) return "";
+  return "$" + (perM >= 10 ? perM.toFixed(2) : perM.toFixed(3));
+}
+export function fmtSave(pct) {
+  return pct == null ? "" : "-" + pct + "%";
+}
+export function host(url) {
+  return String(url || "").replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
+}
+
+// ---- layout grammar ------------------------------------------------------
+export function rule(w = RULE_W) {
+  return "  " + muted(GLYPH.rule.repeat(Math.max(0, w - 2)));
+}
+// A titled section header: blank line, "▍ Title  · meta", hairline rule.
+export function section(title, meta) {
+  const tick = GLYPH.tick ? accent(GLYPH.tick + " ") : "";
+  const head = tick + strong(title) + (meta ? "  " + muted("· " + meta) : "");
+  return "\n" + head + "\n" + rule();
+}
+export function field(label, value) {
+  return "  " + muted(String(label).padEnd(16)) + value;
+}
+
+// ---- banner --------------------------------------------------------------
 export function banner(model, baseURL) {
-  const V = tc(167, 139, 255); // Violet 0G  #A78BFF
-  const W = tc(242, 241, 236); // Foam       #F2F1EC
-  const M = tc(107, 112, 128); // Muted      #6B7080
-  const R = RESET;
-  console.log(`${W}█████   ${V}███${W}    ████${R}`);
-  console.log(`${W}   ██  ${V}█  /█${W}  █${R}`);
-  console.log(`${W}  ██   ${V}█ / █${W}  █  ██${R}   ${M}z0gcode v0.2${R}`);
-  console.log(`${W} ██    ${V}█/  █${W}  █   █${R}   ${M}coding agent on 0G${R}`);
-  console.log(`${W}█████   ${V}███${W}    ████${R}`);
-  console.log(color.dim(`\n  model ${model}  ·  ${baseURL}\n`));
+  if (useColor && uiTTY) {
+    const V = "\x1b[38;2;167;139;255m"; // Violet
+    const W = "\x1b[38;2;242;241;236m"; // Foam (banner only)
+    const M = "\x1b[38;2;107;112;128m"; // Muted
+    const R = "\x1b[0m";
+    console.log(`${W}█████   ${V}███${W}    ████${R}`);
+    console.log(`${W}   ██  ${V}█  /█${W}  █${R}`);
+    console.log(`${W}  ██   ${V}█ / █${W}  █  ██${R}   ${M}z0gcode v0.2${R}`);
+    console.log(`${W} ██    ${V}█/  █${W}  █   █${R}   ${M}coding agent on 0G${R}`);
+    console.log(`${W}█████   ${V}███${W}    ████${R}`);
+  } else {
+    console.log("z0gcode v0.2 · coding agent on 0G");
+  }
+  console.log(
+    muted("  model ") + accent(model) + muted("  · " + host(baseURL) + "  ") +
+    accent(GLYPH.seal) + muted(" TEE") + "\n"
+  );
 }
 
+// ---- agent-run feedback --------------------------------------------------
 export function toolCall(name, summary) {
-  console.log(`${color.cyan("→")} ${color.bold(name)} ${color.dim(summary || "")}`);
+  const room = Math.max(12, cols - 8 - vlen(name));
+  const tail = summary ? " " + muted(trunc(summary, room)) : "";
+  console.log("  " + accent(GLYPH.chevron) + " " + strong(name) + tail);
+}
+export function toolResult(success, summary) {
+  const mark = success ? ok(GLYPH.ok) : err(GLYPH.no);
+  console.log("    " + mark + " " + muted(summary || ""));
 }
 
-export function toolResult(ok, summary) {
-  const mark = ok ? color.green("✓") : color.red("✗");
-  console.log(`  ${mark} ${color.dim(summary || "")}`);
-}
-
+let spinTimer = null;
+let spinFrame = 0;
+const SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 export function thinking(model) {
-  if (process.stdout.isTTY) process.stdout.write(color.dim(`  … thinking on 0G (${model})\r`));
+  if (!uiTTY) return;
+  clearThinking();
+  spinTimer = setInterval(() => {
+    const f = SPIN[spinFrame++ % SPIN.length];
+    process.stdout.write("\r" + accent(f) + muted(" on 0G (" + model + ")") + "  ");
+  }, 80);
+  if (spinTimer.unref) spinTimer.unref();
 }
-
 export function clearThinking() {
-  if (process.stdout.isTTY) process.stdout.write(" ".repeat(50) + "\r");
+  if (spinTimer) {
+    clearInterval(spinTimer);
+    spinTimer = null;
+  }
+  if (uiTTY) process.stdout.write("\r\x1b[2K");
 }
 
 export function assistant(text) {
-  console.log("\n" + text.trim() + "\n");
+  console.log("\n" + String(text).trim() + "\n");
 }
-
 export function info(text) {
-  console.log(color.dim(text));
+  console.log(muted(text));
 }
-
 export function error(text) {
-  console.log(color.red(text));
+  console.log(err(text));
 }
-
-// Raw incremental write for streamed model output.
 export function streamChunk(s) {
   process.stdout.write(s);
 }
 
-// Render the agent's checklist.
-export function renderPlan(plan) {
-  if (!Array.isArray(plan) || plan.length === 0) return;
-  console.log(color.dim("  plan:"));
-  for (const p of plan) {
-    const mark =
-      p.status === "completed" ? color.green("✓") : p.status === "in_progress" ? color.yellow("▶") : color.dim("○");
-    const label = p.status === "completed" ? color.dim(p.step) : p.step;
-    console.log(`    ${mark} ${label}`);
-  }
-}
-
-// HUD line after a turn: token usage + answering model + 0G marker.
 export function hud(model, usage) {
   const i = usage?.prompt_tokens ?? usage?.input_tokens;
   const o = usage?.completion_tokens ?? usage?.output_tokens;
-  const toks = i != null || o != null ? `${i ?? "?"} in / ${o ?? "?"} out tokens · ` : "";
-  console.log(color.dim(`  · ${toks}${model} · 0G Compute (TEE)`));
+  const toks = i != null || o != null ? `${i ?? "?"} in / ${o ?? "?"} out · ` : "";
+  console.log(
+    muted("  · " + toks + model + " · ") + accent(GLYPH.seal) + muted(" 0G Compute (TEE)")
+  );
 }
 
-// Line-based colored diff. Prints only changed lines (+ green / - red), capped.
+// Compact plan header (printed repeatedly mid-run, so no rule).
+export function renderPlan(plan) {
+  if (!Array.isArray(plan) || plan.length === 0) return;
+  const done = plan.filter((p) => p.status === "completed").length;
+  const tick = GLYPH.tick ? accent(GLYPH.tick + " ") : "";
+  console.log("  " + tick + strong("Plan") + " " + muted(done + "/" + plan.length));
+  for (const p of plan) {
+    let mark;
+    let label;
+    if (p.status === "completed") {
+      mark = ok(GLYPH.ok);
+      label = muted(p.step);
+    } else if (p.status === "in_progress") {
+      mark = accent(GLYPH.run);
+      label = strong(p.step);
+    } else {
+      mark = muted(GLYPH.pending);
+      label = p.step;
+    }
+    console.log("    " + mark + " " + label);
+  }
+}
+
+// ---- trust taxonomy (accurate to the API) --------------------------------
+// private = TeeML (0G's own + glm-5.2). verifiable = TeeTLS attested. open = none.
+export function trustTier(m) {
+  if (m.private) return { glyph: GLYPH.priv, short: "priv", long: "private", role: accent };
+  if (m.verifiable) return { glyph: GLYPH.ver, short: "ver", long: "verifiable", role: ok };
+  return { glyph: GLYPH.open, short: "open", long: "open", role: muted };
+}
+function trustCell(m) {
+  const t = trustTier(m);
+  return t.role((t.glyph ? t.glyph + " " : "") + t.short);
+}
+
+// ---- `z0g models` table --------------------------------------------------
+function bandOf(m) {
+  if (String(m.id).startsWith("0gm")) return "0G native";
+  if (m.private || m.verifiable) return "Verifiable (TEE)";
+  return "Open (proxied)";
+}
+function modelRow(m, currentId) {
+  const cur = m.id === currentId;
+  const gutter = cur ? accent(GLYPH.chevron + " ") : "  ";
+  const id = trunc(m.id, 20);
+  const idCell = pad(cur ? accent(strong(id)) : id, 20);
+  const ctx = muted(pad(fmtCtx(m.ctx), 5, "right"));
+  const out = muted(pad(m.maxOut ? fmtCtx(m.maxOut) : "-", 5, "right"));
+  const pin = muted(pad(fmtUsd(m.inPerM), 7, "right"));
+  const pout = muted(pad(fmtUsd(m.outPerM), 7, "right"));
+  const save = pad(m.discount != null ? ok(fmtSave(m.discount)) : "", 6, "right");
+  const trust = trustCell(m); // last column, no trailing pad
+  return gutter + idCell + " " + ctx + " " + out + " " + pin + " " + pout + " " + save + " " + trust;
+}
+function colHeader() {
+  return (
+    "  " + pad("MODEL", 20) + " " + pad("CTX", 5, "right") + " " + pad("MAX", 5, "right") +
+    " " + pad("$IN", 7, "right") + " " + pad("$OUT", 7, "right") + " " + pad("SAVE", 6, "right") +
+    " " + "TRUST"
+  );
+}
+export function renderModelsTable(models, { currentId } = {}) {
+  const chat = orderChatModels(models, currentId);
+  const media = mediaModels(models);
+  const out = [];
+  out.push(section("Models", "0G Router · " + models.length));
+  out.push(muted(colHeader()));
+  let band = null;
+  for (const m of chat) {
+    const b = bandOf(m);
+    if (b !== band) {
+      band = b;
+      out.push("  " + muted(band));
+    }
+    out.push(modelRow(m, currentId));
+  }
+  if (media.length) {
+    out.push("");
+    out.push("  " + muted("Media models"));
+    for (const m of media) {
+      const kind = m.type === "speech-to-text" ? "speech" : m.type === "text-to-image" ? "image" : m.type;
+      out.push("  " + pad(trunc(m.id, 20), 20) + " " + pad(trustCell(m), 8) + " " + muted(kind));
+    }
+  }
+  out.push("");
+  out.push(rule());
+  out.push(
+    "  " + accent(GLYPH.priv) + " " + muted("private (TEE)  ") + ok(GLYPH.ver) + " " +
+    muted("verifiable  ") + muted(GLYPH.open + " open   ") +
+    muted("SAVE vs official API · prices per 1M tokens")
+  );
+  out.push("  " + accent(GLYPH.seal) + " " + muted("all inference runs in a TEE on 0G Compute.  Switch: ") + accent("z0g --model <id>") + muted(" or ") + accent("/model"));
+  return out.join("\n");
+}
+
+// Numbered fallback list (non-TTY / piped) for the model picker.
+export function renderModelsPickList(models, currentId) {
+  const out = [strong("Select a 0G model:")];
+  models.forEach((m, i) => {
+    const cur = m.id === currentId ? muted("  (current)") : "";
+    out.push(
+      "  " + pad(String(i + 1) + ")", 4) + " " + pad(trunc(m.id, 20), 20) + " " +
+      pad(fmtCtx(m.ctx), 5, "right") + "  " + fmtUsd(m.inPerM) + "/" + fmtUsd(m.outPerM) +
+      "  " + trustCell(m) + cur
+    );
+  });
+  out.push(muted("  Type a number or a model id. Anything else cancels."));
+  return out.join("\n");
+}
+
+// ---- `/model` arrow-key picker frame -------------------------------------
+export function modelPickerFrame(items, index, currentId) {
+  const W = Math.max(24, Math.min(process.stdout.columns || 80, 100));
+  const termRows = process.stdout.rows || 24;
+  const lines = [];
+  const tick = GLYPH.tick ? accent(GLYPH.tick + " ") : "";
+  lines.push(clip(tick + strong("Select model") + muted("   " + GLYPH.up + "/" + GLYPH.down + " move · enter select · esc cancel"), W));
+  lines.push("");
+  lines.push(clip("  " + muted(pad("MODEL", 20) + " " + pad("TRUST", 8) + " PRICE $/1M in·out"), W));
+
+  // Window to the terminal height: the frame must never exceed the viewport,
+  // or arrowSelect's in-place rewind (moveCursor up) desyncs and corrupts it.
+  const CHROME = 8; // hint + blank + colheader + 2 "more" rows + blank + 2 detail lines
+  const win = Math.max(1, termRows - CHROME);
+  let start = 0;
+  if (items.length > win) start = Math.min(Math.max(0, index - (win >> 1)), items.length - win);
+  const end = Math.min(items.length, start + win);
+
+  lines.push(start > 0 ? "  " + muted(GLYPH.up + " " + start + " more") : "");
+  for (let i = start; i < end; i++) {
+    const m = items[i];
+    const sel = i === index;
+    const isCur = m.id === currentId;
+    let gutter;
+    if (sel) gutter = useColor ? accent(GLYPH.chevron + " ") : GLYPH.point + " ";
+    else if (isCur) gutter = ok(GLYPH.current + " ");
+    else gutter = "  ";
+    const t = trustTier(m);
+    const price = fmtUsd(m.inPerM) + "/" + fmtUsd(m.outPerM);
+    const rowText = pad(trunc(m.id, 20), 20) + " " + pad((t.glyph ? t.glyph + " " : "") + t.short, 8) + " " + price;
+    let painted;
+    if (sel) painted = useColor ? reverse(rowText + " ") : rowText;
+    else if (isCur) painted = strong(rowText);
+    else painted = rowText;
+    lines.push(clip(gutter + painted, W));
+  }
+  lines.push(end < items.length ? "  " + muted(GLYPH.down + " " + (items.length - end) + " more") : "");
+  lines.push("");
+
+  const m = items[index] || items[0];
+  const t = trustTier(m);
+  const price = "in " + fmtUsd(m.inPerM) + "  out " + fmtUsd(m.outPerM);
+  const disc = m.discount != null ? "  ·  " + m.discount + "% off" : "";
+  const idShown = trunc(m.id, Math.max(0, W - 2));
+  const nameStr = m.name ? "  ·  " + m.name : "";
+  lines.push(clip("  " + strong(idShown) + muted(nameStr), W));
+  const plain2 = "  " + price + " /1M  ·  ctx " + fmtCtx(m.ctx) + "  ·  " + t.long + disc;
+  lines.push(
+    vlen(plain2) <= W
+      ? "  " + muted(price + " /1M  ·  ctx " + fmtCtx(m.ctx) + "  ·  ") + t.role(t.long) + muted(disc)
+      : clip(muted(plain2), W)
+  );
+  return lines.join("\n");
+}
+export function pickConfirm(id) {
+  return "  " + ok(GLYPH.ok) + " model set to " + strong(id) + muted("  (saved)");
+}
+
+// ---- diff (unchanged behavior, role colors) ------------------------------
 export function renderDiff(oldText, newText, { maxLines = 80 } = {}) {
   const a = (oldText || "").split("\n");
   const b = (newText || "").split("\n");
   if (a.length > 2000 || b.length > 2000) {
-    return color.dim(`    (diff omitted: ${a.length} → ${b.length} lines)`);
+    return muted(`    (diff omitted: ${a.length} to ${b.length} lines)`);
   }
   const ops = diffLines(a, b);
   const out = [];
   for (const op of ops) {
     if (op.t === " ") continue;
-    const paint = op.t === "+" ? color.green : color.red;
+    const paint = op.t === "+" ? ok : err;
     out.push("    " + paint(op.t + " " + op.s));
     if (out.length >= maxLines) {
-      out.push(color.dim("    … (diff truncated)"));
+      out.push(muted("    ... (diff truncated)"));
       break;
     }
   }
-  return out.length ? out.join("\n") : color.dim("    (no textual change)");
+  return out.length ? out.join("\n") : muted("    (no textual change)");
 }
 
 function diffLines(a, b) {

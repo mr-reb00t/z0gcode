@@ -14,39 +14,57 @@ import { saveSession, loadSession } from "../src/session.mjs";
 import { loadPlan } from "../src/plan.mjs";
 import { loadMcp } from "../src/mcp.mjs";
 import { saveSetting } from "../src/settings.mjs";
+import { fetchModels, orderChatModels } from "../src/models-info.mjs";
+import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
+import { arrowSelect } from "../src/prompt.mjs";
 import * as ui from "../src/ui.mjs";
 
-const HELP = `${ui.color.magenta("z0gcode")} — a coding agent whose brain runs on 0G Compute.
-
-Usage:
-  z0g "<task>"           Run a coding task (one-shot)
-  z0g                    Interactive session (REPL, /help for commands)
-  z0g goal "<objective>" Run until a verify command passes (iterate-until-done)
-  z0g models             List the 0G models available on the Router
-  z0g doctor             Check your 0G setup (key, connectivity, model)
-  z0g attest             Show the provenance manifest (which 0G model wrote which change)
-  z0g serve --mcp        Run as an MCP server exposing z0gcode's 0G tools
-
-Options:
-  --auto                 Allow shell commands and on-chain actions (run_bash, upload_0g_storage)
-  --continue             Continue the saved session in this directory
-  --model <id>           Override the model (default ${CONFIG.model})
-  --verify "<cmd>"       Run the task, then verify and self-correct with this command
-  --auto-verify          Same, auto-detecting the verify command (npm test / .z0g/verify)
-  --max-steps <n>        Max agent steps (default ${CONFIG.maxSteps})
-  --cwd <dir>            Working directory (default: current)
-  -h, --help             Show this help
-  -v, --version          Show version
-
-Setup:
-  export ZOG_API_KEY=<your 0G Router key from https://pc.0g.ai>
-
-0G is the default backend: no OpenAI or Anthropic key, no config file.`;
+function helpText() {
+  const groups = [
+    ["Run", [
+      ['z0g "<task>"', "Run a coding task (one-shot)"],
+      ["z0g", "Interactive session (REPL, /help for commands)"],
+      ['z0g goal "<obj>"', "Iterate until a verify command passes"],
+    ]],
+    ["Inspect", [
+      ["z0g models", "List the 0G models on the Router (add --json)"],
+      ["z0g skills", "List user/project skills (enable|disable <name>)"],
+      ["z0g doctor", "Check your 0G setup (key, connectivity, model)"],
+      ["z0g attest", "Show which 0G model wrote which change"],
+    ]],
+    ["Serve", [
+      ["z0g serve --mcp", "Expose z0gcode's 0G tools as an MCP server"],
+    ]],
+    ["Options", [
+      ["--auto", "Allow shell + on-chain actions (run_bash, deploy, upload)"],
+      ["--continue", "Continue the saved session in this directory"],
+      ["--model <id>", "Override the model (default " + CONFIG.model + ")"],
+      ['--verify "<cmd>"', "Run, then verify and self-correct with this command"],
+      ["--auto-verify", "Same, auto-detecting the verify command"],
+      ["--max-steps <n>", "Max agent steps (default " + CONFIG.maxSteps + ")"],
+      ["--cwd <dir>", "Working directory (default: current)"],
+    ]],
+    ["Setup", [
+      ["ZOG_API_KEY", "Your 0G Router key (env or .env). Get one at https://pc.0g.ai"],
+    ]],
+  ];
+  const w = Math.max(...groups.flatMap(([, rows]) => rows.map(([c]) => c.length))) + 2;
+  const out = [ui.strong("z0gcode") + ui.muted(" · a coding agent whose brain runs on 0G Compute.")];
+  for (const [title, rows] of groups) {
+    out.push("");
+    out.push("  " + ui.muted(title));
+    for (const [c, d] of rows) out.push("  " + ui.accent(c.padEnd(w)) + ui.muted(d));
+  }
+  out.push("");
+  out.push("  " + ui.muted("0G is the default backend: no OpenAI or Anthropic key, no config file."));
+  return out.join("\n");
+}
 
 const SLASH_COMMANDS = [
   ["/help", "Show commands"],
   ["/clear", "Reset the conversation context"],
   ["/model", "Pick the active 0G model (saved to settings)"],
+  ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
   ["/plan", "Show the current task checklist"],
   ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
@@ -61,8 +79,8 @@ function slashMenu(filter) {
     const f = SLASH_COMMANDS.filter(([c]) => c.startsWith(filter));
     if (f.length) rows = f;
   }
-  const list = rows.map(([c, d]) => `  ${ui.color.magenta(c.padEnd(9))}  ${ui.color.dim(d)}`).join("\n");
-  return ui.color.bold("Commands:") + "\n" + list;
+  const list = rows.map(([c, d]) => `  ${ui.accent(c.padEnd(9))}  ${ui.muted(d)}`).join("\n");
+  return "  " + ui.muted("Commands") + "\n" + list;
 }
 
 // Tab-completion for slash commands: "/" + Tab lists all, "/mo" + Tab -> "/model".
@@ -73,26 +91,16 @@ function slashCompleter(line) {
   return [hits.length ? hits : names, line];
 }
 
-// Print the numbered model list and return the ids, for interactive /model.
-async function pickModels(client, current) {
-  let rows = [];
+// Fetch chat models ordered for the picker (default first, verifiable by price).
+async function chatModelsFor(client, current) {
   try {
-    const res = await client.models.list();
-    rows = (res.data || []).filter((m) => (m.supported_parameters || []).includes("tools"));
-    if (!rows.length) rows = res.data || [];
+    const all = await fetchModels(client);
+    const chat = orderChatModels(all, current).filter((m) => m.tools);
+    return chat.length ? chat : orderChatModels(all, current);
   } catch (e) {
     ui.error("could not list models: " + e.message);
     return null;
   }
-  if (!rows.length) return null;
-  console.log(ui.color.bold("Select a 0G model:"));
-  rows.forEach((m, i) => {
-    const cur = m.id === current ? ui.color.green(" ← current") : "";
-    const num = ui.color.magenta(String(i + 1).padStart(2));
-    console.log(`  ${num}. ${m.id.padEnd(20)} ${ui.color.dim("ctx=" + (m.context_length ?? "?"))}${cur}`);
-  });
-  ui.info("Type a number to choose (or a model id). Anything else cancels.");
-  return rows.map((m) => m.id);
 }
 
 function parse(argv) {
@@ -102,6 +110,7 @@ function parse(argv) {
     const a = argv[i];
     if (a === "--auto") flags.auto = true;
     else if (a === "--mcp") flags.mcp = true;
+    else if (a === "--json") flags.json = true;
     else if (a === "--auto-verify") flags.autoVerify = true;
     else if (a === "--continue") flags.cont = true;
     else if (a === "--model") flags.model = argv[++i];
@@ -144,62 +153,143 @@ function sh(cmd, cwd) {
   });
 }
 
-async function cmdModels() {
+async function cmdModels(flags = {}) {
   const client = makeClient();
-  const res = await client.models.list();
-  const rows = (res.data || []).filter((m) => (m.supported_parameters || []).includes("tools") || m.type === "chatbot");
-  console.log(ui.color.bold(`0G Router models (${rows.length}):`));
-  for (const m of rows) {
-    const tools = (m.supported_parameters || []).includes("tools") ? ui.color.green("tools") : ui.color.dim("—    ");
-    console.log(`  ${m.id.padEnd(20)} ${tools}  ${ui.color.dim("ctx=" + (m.context_length ?? "?"))}`);
+  const models = await fetchModels(client);
+  if (flags.json) {
+    const out = models.map((m) => ({
+      id: m.id, name: m.name, type: m.type, context_length: m.ctx, max_output: m.maxOut,
+      price_in_per_1m: m.inPerM, price_out_per_1m: m.outPerM,
+      tools: m.tools, vision: m.vision, verifiable: m.verifiable, private: m.private,
+      tee: m.tee, discount_pct: m.discount,
+    }));
+    console.log(JSON.stringify(out, null, 2));
+    return;
   }
+  console.log(ui.renderModelsTable(models, { currentId: CONFIG.model }));
 }
 
 async function cmdDoctor() {
-  console.log(ui.color.bold("z0gcode doctor"));
+  const warnGlyph = ui.uiTTY ? "▲" : "!";
+  const row = (state, label, value) => {
+    const g =
+      state === "ok" ? ui.ok(ui.GLYPH.ok) :
+      state === "err" ? ui.err(ui.GLYPH.no) :
+      state === "warn" ? ui.warn(warnGlyph) : ui.muted(ui.GLYPH.open);
+    console.log("    " + g + "  " + ui.muted(String(label).padEnd(18)) + value);
+  };
+  const group = (t) => console.log("  " + ui.muted(t));
+
+  console.log(ui.section("Doctor", "0G Compute"));
   const hasKey = !!CONFIG.apiKey;
-  console.log(`  ZOG_API_KEY   ${hasKey ? ui.color.green("set") : ui.color.red("missing")}`);
-  console.log(`  Router        ${CONFIG.baseURL}`);
-  console.log(`  Model         ${CONFIG.model}  ${ui.color.dim("(fallbacks: " + CONFIG.fallbacks.join(", ") + ")")}`);
+  group("Auth");
+  row(hasKey ? "ok" : "err", "ZOG_API_KEY", hasKey ? "set · value hidden" : ui.warn("missing"));
   if (!hasKey) {
-    console.log(ui.color.yellow("\n  Set ZOG_API_KEY (https://pc.0g.ai) to enable inference."));
+    console.log("\n  " + ui.err(ui.GLYPH.no) + "  " + ui.strong("Not ready") + ui.muted(" · 1 issue"));
+    console.log("  " + ui.muted("Fix: export ZOG_API_KEY=<key> (or add it to .env) · get one at https://pc.0g.ai"));
     return;
   }
+
+  group("Router");
+  row("ok", "Endpoint", ui.host(CONFIG.baseURL));
+  let models = null;
   try {
-    const client = makeClient();
-    const res = await client.models.list();
-    const ids = (res.data || []).map((m) => m.id);
-    const present = ids.includes(CONFIG.model);
-    console.log(`  Connectivity  ${ui.color.green("ok")} (${ids.length} models)`);
-    console.log(`  Default model ${present ? ui.color.green("available") : ui.color.yellow("not found (will fall back)")}`);
+    models = await fetchModels(makeClient());
+    row("ok", "Reachable", "ok · " + models.length + " models");
   } catch (e) {
-    console.log(`  Connectivity  ${ui.color.red("failed")}: ${e.message}`);
+    row("err", "Reachable", ui.err("failed: " + e.message));
+  }
+
+  group("Model");
+  const def = models ? models.find((m) => m.id === CONFIG.model) : null;
+  let chip = "";
+  if (def) {
+    const t = ui.trustTier(def);
+    const tee = def.private ? "TeeML" : def.verifiable ? "TeeTLS" : "";
+    chip = "   " + t.role((t.glyph ? t.glyph + " " : "") + t.long) + (tee ? ui.muted(" (" + tee + ")") : "");
+  }
+  row("ok", "Default", CONFIG.model + chip);
+  if (models) row(def ? "ok" : "warn", "On router", def ? "available" : ui.warn("not found (will fall back)"));
+  row("open", "Fallbacks", ui.muted(CONFIG.fallbacks.join(", ")));
+
+  group("Runtime");
+  row("open", "Limits", ui.muted(CONFIG.maxSteps + " steps · " + CONFIG.maxTokens + " max tokens · temp " + CONFIG.temperature));
+
+  console.log("");
+  if (models && def) {
+    console.log("  " + ui.ok(ui.GLYPH.ok) + "  " + ui.strong("Ready.") + "   " + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
+  } else {
+    console.log("  " + ui.warn(warnGlyph) + "  " + ui.strong("Degraded") + ui.muted(models ? " · default model not on router" : " · router unreachable"));
   }
 }
 
 async function printAttest(cwd) {
   const man = await loadProvenance(cwd);
   if (!man || !Array.isArray(man.entries) || man.entries.length === 0) {
-    console.log(ui.color.dim("No provenance recorded yet. Run a task that edits files, then attest."));
+    console.log(ui.muted("No provenance yet. Run a task that edits files, then attest."));
     return;
   }
-  console.log(ui.color.bold(`z0gcode provenance — ${man.entries.length} change(s):`));
+  const n = man.entries.length;
+  console.log(ui.section("Provenance", n + (n === 1 ? " change" : " changes") + " on 0G"));
+  const EMPTY = "e3b0c44298fc"; // sha256("") prefix: a new file
   for (const e of man.entries) {
-    console.log(`  ${e.path}`);
-    console.log(ui.color.dim(`    ${String(e.sha256_before).slice(0, 12)} → ${String(e.sha256_after).slice(0, 12)}  ·  ${e.model}  ·  ${e.ts}`));
+    const g = e.response_id ? ui.ok(ui.GLYPH.ok) : ui.muted(ui.GLYPH.open);
+    console.log("  " + g + " " + ui.strong(e.path));
+    console.log("      " + ui.muted("model  ") + ui.accent(e.model));
+    const before = String(e.sha256_before).slice(0, 12);
+    const after = String(e.sha256_after).slice(0, 12);
+    const from = before.startsWith(EMPTY) ? "(new file)" : before;
+    console.log("      " + ui.muted("hash   ") + ui.muted(from) + " " + ui.accent(ui.GLYPH.chevron) + " " + ui.muted(after));
+    console.log("      " + ui.muted("signed " + e.ts + " · " + (e.response_id || "no response id")));
   }
-  console.log(ui.color.dim("\n  Model id and response id are captured from 0G Compute (TEE). Full TEE-quote verification is roadmap."));
+  console.log("");
+  console.log("  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Model id + response id captured from 0G Compute (TEE)."));
+  console.log("  " + ui.muted("Full TEE-quote verification: roadmap."));
+}
+
+function printSkills(cwd) {
+  const skills = discoverSkills(cwd);
+  console.log(ui.section("Skills", skills.length + (skills.length === 1 ? " skill" : " skills")));
+  if (!skills.length) {
+    console.log("  " + ui.muted("No user skills yet. Add a markdown file with name/description frontmatter to:"));
+    console.log("  " + ui.muted("  ~/.z0gcode/skills/<name>.md   (global)   or   .z0g/skills/<name>.md   (project)"));
+    console.log("  " + ui.muted("Enabled skills are offered to the agent; load one with the read_skill tool."));
+    return;
+  }
+  for (const s of skills) {
+    const g = s.enabled ? ui.ok(ui.GLYPH.ok) : ui.muted(ui.GLYPH.open);
+    const state = s.enabled ? "" : ui.muted(" (disabled)");
+    console.log("  " + g + " " + ui.strong(s.name) + ui.muted("  · " + s.scope) + state);
+    if (s.description) console.log("      " + ui.muted(s.description));
+  }
+  console.log("");
+  console.log("  " + ui.muted("Toggle: /skills enable <name> · /skills disable <name>. The agent loads a skill with read_skill."));
+}
+
+function cmdSkills(cwd, arg) {
+  const parts = String(arg || "").trim().split(/\s+/).filter(Boolean);
+  const sub = parts[0];
+  if (sub === "enable" || sub === "disable") {
+    const name = parts.slice(1).join(" ");
+    if (!name) { console.log(ui.warn("Usage: /skills " + sub + " <name>")); return; }
+    if (!discoverSkills(cwd).some((s) => s.name === name)) { console.log(ui.warn("No skill named " + name)); return; }
+    setSkillEnabled(cwd, name, sub === "enable");
+    console.log("  " + ui.ok(ui.GLYPH.ok) + " skill " + ui.strong(name) + " " + (sub === "enable" ? "enabled" : "disabled"));
+    return;
+  }
+  printSkills(cwd);
 }
 
 async function runVerify(cwd) {
   const cmd = detectVerifyCmd(cwd);
   if (!cmd) {
-    console.log(ui.color.yellow("No verify command found (add a package.json test script or a .z0g/verify file)."));
+    console.log(ui.warn("No verify command found (add a package.json test script or a .z0g/verify file)."));
     return;
   }
-  console.log(ui.color.dim(`running: ${cmd}`));
+  console.log(ui.muted("running: " + cmd));
   const r = await sh(cmd, cwd);
-  console.log((r.code === 0 ? ui.color.green("passed") : ui.color.red(`failed (exit ${r.code})`)) + "\n" + r.out.slice(0, 4000));
+  const head = r.code === 0 ? ui.ok(ui.GLYPH.ok + " passed") : ui.err(ui.GLYPH.no + " failed (exit " + r.code + ")");
+  console.log(head + "\n" + ui.muted(r.out.slice(0, 4000)));
 }
 
 async function runTask(task, flags) {
@@ -221,7 +311,7 @@ async function runTask(task, flags) {
 
 async function cmdGoal(objective, flags) {
   if (!objective) {
-    console.log(ui.color.yellow('Usage: z0g goal "<objective>" [--verify "<cmd>"] [--auto]'));
+    console.log(ui.warn('Usage: z0g goal "<objective>" [--verify "<cmd>"] [--auto]'));
     return;
   }
   const client = makeClient();
@@ -238,13 +328,14 @@ async function repl(flags) {
   let model = flags.model;
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: ui.color.magenta("z0g › "), completer: slashCompleter });
+  const promptStr = ui.strong("z0g") + ui.accent(" " + ui.GLYPH.chevron) + " ";
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: promptStr, completer: slashCompleter });
   let pendingModels = null; // when set, the next line is a /model selection
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
   rl.prompt();
   for await (const line of rl) {
     const input = line.trim();
-    if (!input) { rl.prompt(); continue; }
+    if (!input) { pendingModels = null; rl.prompt(); continue; }
 
     // Resolve a pending /model pick (a slash command instead cancels it).
     if (pendingModels && !input.startsWith("/")) {
@@ -254,7 +345,7 @@ async function repl(flags) {
       let chosen = null;
       if (!Number.isNaN(n) && n >= 1 && n <= list.length) chosen = list[n - 1];
       else if (list.includes(input)) chosen = input;
-      if (chosen) { model = chosen; saveSetting("model", chosen); ui.info(`model → ${chosen} (saved)`); }
+      if (chosen) { model = chosen; saveSetting("model", chosen); console.log(ui.pickConfirm(chosen)); }
       else ui.info("model unchanged");
       rl.prompt();
       continue;
@@ -268,9 +359,30 @@ async function repl(flags) {
       else if (cmd === "help" || cmd === "") console.log(slashMenu());
       else if (cmd === "clear") { history = null; ui.info("context cleared"); }
       else if (cmd === "model") {
-        if (arg) { model = arg; saveSetting("model", arg); ui.info(`model → ${arg} (saved)`); }
-        else pendingModels = await pickModels(client, model || CONFIG.model);
+        if (arg) { model = arg; saveSetting("model", arg); console.log(ui.pickConfirm(arg)); }
+        else {
+          const cur = model || CONFIG.model;
+          const models = await chatModelsFor(client, cur);
+          if (models && models.length) {
+            if (ui.interactive && typeof process.stdin.setRawMode === "function") {
+              rl.pause();
+              const chosen = await arrowSelect({
+                items: models,
+                initialIndex: Math.max(0, models.findIndex((m) => m.id === cur)),
+                renderFrame: (its, i) => ui.modelPickerFrame(its, i, cur),
+                clearOnExit: true,
+              });
+              rl.resume();
+              if (chosen) { model = chosen.id; saveSetting("model", chosen.id); console.log(ui.pickConfirm(chosen.id)); }
+              else ui.info("model unchanged");
+            } else {
+              console.log(ui.renderModelsPickList(models, cur));
+              pendingModels = models.map((m) => m.id);
+            }
+          }
+        }
       }
+      else if (cmd === "skills") cmdSkills(cwd, arg);
       else if (cmd === "attest") await printAttest(cwd);
       else if (cmd === "plan") { const p = await loadPlan(cwd); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
@@ -293,12 +405,13 @@ async function repl(flags) {
 
 async function main() {
   const { flags, positional } = parse(process.argv.slice(2));
-  if (flags.help) { console.log(HELP); return; }
+  if (flags.help) { console.log(helpText()); return; }
   if (flags.version) { console.log("z0gcode 0.2.0"); return; }
 
   const sub = positional[0];
   try {
-    if (sub === "models") return await cmdModels();
+    if (sub === "models") return await cmdModels(flags);
+    if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
     if (sub === "attest") return await printAttest(resolveCwd(flags));
     if (sub === "serve") {
@@ -319,7 +432,7 @@ async function main() {
     if (!task) {
       ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);
       if (process.stdin.isTTY) return await repl(flags);
-      console.log(HELP);
+      console.log(helpText());
       return;
     }
     ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);

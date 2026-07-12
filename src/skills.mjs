@@ -29,7 +29,7 @@ export function readSkill(name) {
 
 // Concise, accurate 0G primer injected into every session's system prompt.
 export const SYSTEM_0G = `
-You are an expert at building on 0G. Key facts (call read_0g_skill for full patterns):
+You are an expert at building on 0G. Key facts (call read_skill for full patterns):
 
 - Your OWN inference runs on the 0G Compute Router (OpenAI-compatible, TEE-backed, private + verifiable). Mainnet: https://router-api.0g.ai/v1. Any app can use it by pointing an OpenAI client at that base_url with a 0G API key.
 - 0G Chain: EVM-compatible L1. Mainnet chainId 16661, RPC https://evmrpc.0g.ai, explorer https://chainscan.0g.ai. Testnet "Galileo" chainId 16602, RPC https://evmrpc-testnet.0g.ai. CRITICAL: compile contracts with evmVersion "cancun" and solidity 0.8.24; use ethers v6 (NOT v5). Deploy with Hardhat or Foundry.
@@ -39,5 +39,5 @@ You are an expert at building on 0G. Key facts (call read_0g_skill for full patt
 - You can deploy a compiled contract to 0G Chain with deploy_0g_chain (needs --auto and ZOG_WALLET_KEY): compile with evmVersion "cancun" and pass its bytecode or an artifact path.
 - Security: never hardcode private keys; read them from env (PRIVATE_KEY) and keep .env in .gitignore.
 
-Skills available via read_0g_skill: ${Object.keys(SKILL_FILES).join(", ")}.
+0G skills available via read_skill: ${Object.keys(SKILL_FILES).join(", ")}.
 `.trim();

@@ -7,11 +7,15 @@ bin/z0g.mjs        CLI: run / models / doctor / attest / interactive; flags; bra
   └─ src/agent.mjs      the agentic loop (reason → call tools → feed results → repeat)
        ├─ src/client.mjs      robust 0G Compute Router client (fallback, retry, empty-guard, usage+id)
        ├─ src/tools.mjs       tools: search_files, read_file, write_file, edit_file, list_dir,
-       │                      run_bash, upload_0g_storage, read_0g_skill
+       │                      run_bash, upload_0g_storage, deploy_0g_chain, update_plan, read_skill
        ├─ src/provenance.mjs  writes .z0g/provenance.json (change hash ↔ 0G model + response id)
        ├─ src/skills.mjs      0G knowledge: system primer + loader for skills/0g/*.md
+       ├─ src/user-skills.mjs user skills: discover ~/.z0gcode/skills + .z0g/skills, inject + read
+       ├─ src/models-info.mjs model catalog: fetch + normalize /v1/models (price, ctx, TEE, discount)
+       ├─ src/prompt.mjs      arrowSelect: raw-mode arrow-key picker (used by /model)
+       ├─ src/settings.mjs    ~/.z0gcode/settings.json (model choice, disabled skills)
        ├─ src/config.mjs      defaults (0G baked in: router URL, model 0gm-1.0, fallbacks)
-       └─ src/ui.mjs          ANSI output: tool calls, colored diffs, HUD, banner
+       └─ src/ui.mjs          ANSI UI: palette roles, glyphs, tables, colored diffs, HUD, banner
   skills/0g/*.md     bundled 0G stack patterns (chain, compute, storage, network, security, testing)
   openspec/          spec-driven change proposals (OpenSpec)
 ```
@@ -22,7 +26,9 @@ bin/z0g.mjs        CLI: run / models / doctor / attest / interactive; flags; bra
 
 ## Axis B: expert on 0G
 
-`src/skills.mjs` injects a concise, accurate 0G primer into the system prompt (network params, SDK packages, the `evmVersion: "cancun"` requirement, storage/compute usage) and exposes `read_0g_skill(name)` so the agent can pull the full pattern docs from `skills/0g/` on demand. That is why it writes correct 0G code instead of plausible-but-wrong code.
+`src/skills.mjs` injects a concise, accurate 0G primer into the system prompt (network params, SDK packages, the `evmVersion: "cancun"` requirement, storage/compute usage) and exposes `read_skill(name)` so the agent can pull the full pattern docs from `skills/0g/` on demand. That is why it writes correct 0G code instead of plausible-but-wrong code.
+
+The same `read_skill` tool also serves **user skills** (`src/user-skills.mjs`): markdown files with `name`/`description` frontmatter discovered from `~/.z0gcode/skills` (global) and `.z0g/skills` (project). Their descriptions are injected into the system prompt (so the model knows when to load one) and the body is read on demand, the same progressive-disclosure model as Claude Code skills. Tool-level extensibility is separate and handled by MCP (`src/mcp.mjs` to consume, `src/mcp-server.mjs` to expose).
 
 ## Axis C: verifiable provenance
 

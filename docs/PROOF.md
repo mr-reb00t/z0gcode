@@ -18,7 +18,7 @@ Transcript:
 → run_bash python3 fib.py
   ✓ bash exit 0
 
-Done. fib.py prints [0, 1, 1, 2, 3, 5, 8, 13, 21, 34] — the correct first 10 Fibonacci numbers.
+Done. fib.py prints [0, 1, 1, 2, 3, 5, 8, 13, 21, 34], the correct first 10 Fibonacci numbers.
 ```
 The agent wrote the file, ran it, read the output, and confirmed correctness on its own.
 
@@ -30,13 +30,13 @@ z0g "Create a hardhat.config.js to deploy a contract to 0G Chain MAINNET. Follow
 ```
 Transcript:
 ```
-→ read_0g_skill chain
-  ✓ 0G skill: chain
-→ list_dir .
-→ write_file hardhat.config.js
-  ✓ wrote hardhat.config.js (674 bytes)
-→ write_file .env.example
-→ write_file .gitignore
+  › read_skill chain
+    ✓ skill: chain
+  › list_dir .
+  › write_file hardhat.config.js
+    ✓ wrote hardhat.config.js (674 bytes)
+  › write_file .env.example
+  › write_file .gitignore
 ```
 The generated `hardhat.config.js` correctly set the **non-obvious** 0G requirement `evmVersion: "cancun"`, solidity `0.8.24`, chainId `16661`, RPC `https://evmrpc.0g.ai`, and read `PRIVATE_KEY` from env (never hardcoded). It also created `.env.example` and `.gitignore` without being asked, a security best practice. A model without the 0G skill would typically miss the `cancun` requirement.
 

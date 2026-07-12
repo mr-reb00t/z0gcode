@@ -3,10 +3,11 @@ import { CONFIG, modelChain } from "./config.mjs";
 import { completeStream } from "./client.mjs";
 import { TOOL_DEFS, makeExecutor } from "./tools.mjs";
 import { SYSTEM_0G } from "./skills.mjs";
+import { skillsPromptBlock } from "./user-skills.mjs";
 import { makeProvenance } from "./provenance.mjs";
 import * as ui from "./ui.mjs";
 
-function systemPrompt() {
+function systemPrompt(cwd) {
   return [
     "You are z0gcode, a terminal coding agent whose brain runs on 0G Compute (0G's decentralized, private, verifiable inference).",
     "You help developers build software and you are an expert at building on the 0G stack.",
@@ -21,6 +22,7 @@ function systemPrompt() {
     "- When the task is complete, STOP calling tools and reply with a short summary of what you did.",
     "",
     SYSTEM_0G,
+    skillsPromptBlock(cwd),
   ].join("\n");
 }
 
@@ -56,7 +58,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
   const prov = makeProvenance(cwd);
   const messages = history && history.length
     ? [...history, { role: "user", content: task }]
-    : [{ role: "system", content: systemPrompt() }, { role: "user", content: task }];
+    : [{ role: "system", content: systemPrompt(cwd) }, { role: "user", content: task }];
 
   const recent = []; // circuit breaker on repeated identical tool calls
   const failCounts = {}; // per-tool failure counter, drives model escalation
@@ -69,7 +71,7 @@ export async function runAgent({ client, task, cwd, allowBash, preferredModel, o
     if (escalate) {
       const stronger = models.find((m) => m !== activeModel) || activeModel;
       order = [stronger, ...models.filter((m) => m !== stronger)];
-      ui.info(`  escalating to ${stronger}`);
+      console.log("  " + ui.warn((ui.uiTTY ? "▲" : "!") + " escalating to " + stronger));
       escalate = false;
     } else {
       order = [activeModel, ...models.filter((m) => m !== activeModel)];

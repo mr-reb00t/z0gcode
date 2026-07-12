@@ -4,7 +4,7 @@
 import { TOOL_DEFS, makeExecutor } from "./tools.mjs";
 
 // The 0G-native tools worth exposing to other agents.
-const EXPOSE = new Set(["read_0g_skill", "upload_0g_storage"]);
+const EXPOSE = new Set(["read_skill", "upload_0g_storage"]);
 
 export async function startMcpServer({ cwd, allowBash }) {
   const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");

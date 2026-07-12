@@ -10,12 +10,12 @@ Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infr
   ██   █ / █  █  ██   z0gcode v0.2
  ██    █/  █  █   █   coding agent on 0G
 █████   ███    ████
-  model 0gm-1.0-35b-a3b  ·  https://router-api.0g.ai/v1
+  model 0gm-1.0-35b-a3b  · router-api.0g.ai  ◈ TEE
 
-→ read_0g_skill chain
-  ✓ 0G skill: chain
-→ write_file hardhat.config.js
-  ✓ wrote hardhat.config.js (674 bytes)
+  › read_skill chain
+    ✓ skill: chain
+  › write_file hardhat.config.js
+    ✓ wrote hardhat.config.js (674 bytes)
 
 Done. Configured for 0G Chain Mainnet: solidity 0.8.24, evmVersion "cancun"
 (required by 0G Chain), chainId 16661, PRIVATE_KEY read from env.
@@ -34,7 +34,7 @@ It is not a rebrand of a big framework: the agent loop, tools, and CLI are origi
 
 ## Features
 
-- **Agentic loop** with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by `--auto`), and `read_0g_skill`.
+- **Agentic loop** with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by `--auto`), and `read_skill`.
 - **Colored diffs**: every file change is shown as a green/red diff, so you can audit exactly what the agent did.
 - **Inference HUD**: a footer after each turn with token usage, the answering model, and the `0G Compute (TEE)` marker.
 - **Verifiable provenance (`z0g attest`)**: z0gcode records `.z0g/provenance.json` binding each change (before/after hash) to the 0G model and response id that produced it. A closed-provider CLI cannot prove which model wrote which code. Full TEE-quote verification is roadmap.
@@ -42,9 +42,11 @@ It is not a rebrand of a big framework: the agent loop, tools, and CLI are origi
 - **Reliability on a decentralized backend**: app-level multi-model fallback, retry/backoff, tool-JSON repair, a loop breaker, and model escalation (a stuck turn escalates to a stronger 0G model instead of looping).
 - **Streaming**: the model's output streams token by token, so the agent feels alive.
 - **Session memory**: the conversation persists per directory; `--continue` resumes it and the REPL keeps context across prompts.
-- **Goal loop + slash commands**: `z0g goal "<objective>"` runs and re-runs until a verify command (e.g. `npm test`) passes; the REPL has `/goal`, `/model`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`.
+- **Goal loop + slash commands**: `z0g goal "<objective>"` runs and re-runs until a verify command (e.g. `npm test`) passes; the REPL has `/goal`, `/model`, `/skills`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`.
 - **Planning**: on multi-step tasks the agent lays out a visible checklist (`update_plan`), updating it as it works; `/plan` shows it.
 - **MCP, both ways**: connect to MCP servers (0G or third-party) via `.z0g/mcp.json` (their tools appear as `mcp_<server>__<tool>`), and run `z0g serve --mcp` to expose z0gcode's own 0G tools (skills, storage) as an MCP server for other agents (Claude Code, Cursor). A Track 2 multiplier.
+- **Model catalog and picker**: `z0g models` renders a live table from the Router API (price in/out per 1M tokens, context, max output, TEE trust tier, savings vs the official API), grouped 0G-native, verifiable, and open; add `--json` for scripting. In the REPL, `/model` opens an arrow-key picker (current model marked, live price/trust detail) and remembers your choice in `~/.z0gcode/settings.json`.
+- **User skills (extensible)**: drop a markdown file with `name` and `description` frontmatter into `~/.z0gcode/skills/<name>.md` (global) or `.z0g/skills/<name>.md` (project, or `<name>/SKILL.md`). z0gcode auto-discovers it, injects the description so the model knows when to use it, and loads the body on demand with the `read_skill` tool (progressive disclosure, like Claude Code skills). Manage them with `z0g skills` / `/skills enable|disable <name>`. Tool-level extensibility is separate and lives in MCP (see below).
 
 Feature proposals and specs live under [openspec/](openspec/) (OpenSpec, spec-driven).
 
@@ -76,12 +78,13 @@ z0g --auto "scaffold a Fastify app and run it"           # --auto allows shell c
 z0g goal --auto "make the failing tests pass"            # iterate until a verify command passes
 z0g --continue "now add input validation"                # continue the saved session
 z0g                                                      # interactive session (/help for commands)
-z0g models                                               # list 0G models on the Router
+z0g models                                               # rich table of 0G models (add --json)
+z0g skills                                               # list user/project skills (enable|disable)
 z0g doctor                                               # check key, connectivity, model
 z0g attest                                               # show which 0G model wrote which change
 ```
 
-In the interactive session, type `/` and press **Tab** to autocomplete slash commands (or `/` + Enter to list them): `/goal`, `/model`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/model` with no argument opens an interactive picker of the 0G models and remembers your choice.
+In the interactive session, type `/` and press **Tab** to autocomplete slash commands (or `/` + Enter to list them): `/goal`, `/model`, `/skills`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/model` with no argument opens an arrow-key picker of the 0G models and remembers your choice; `/skills` lists your skills and toggles them.
 
 Your model choice is saved in `~/.z0gcode/settings.json` (like Claude Code's settings), so it persists across sessions. A project-level `.z0g/settings.json` overrides it.
 
@@ -102,15 +105,18 @@ See [docs/PROOF.md](docs/PROOF.md) for a recorded end-to-end run and [docs/MODEL
 
 ## Roadmap
 
-- Streaming UI, conversation memory / session resume, planning checklist, slash commands (`/goal`, `/deploy`, ...).
-- Deeper 0G ops: in-agent deploy to 0G Chain and INFT mint; anchor the provenance manifest on 0G Chain.
-- Publish `z0gcode` to npm; contribute an OpenCode setup to `0gfoundation/0g-agent-skills`.
+Shipped: streaming UI, session memory / `--continue`, planning checklist, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (verified on mainnet), MCP both ways, the model catalog and arrow-key picker, and user skills.
+
+Next:
+- Deeper 0G ops: INFT mint (ERC-7857) and anchoring the provenance manifest on 0G Chain.
+- Full TEE-quote verification of the provenance manifest (not just model + response id).
+- Publish `z0gcode` to npm; a shareable starter pack of user skills.
 
 ## Docs
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how it fits together.
-- [docs/MODELS.md](docs/MODELS.md) — 0G Router model catalog and model choice.
-- [docs/PROOF.md](docs/PROOF.md) — recorded, reproducible proof of concept.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it fits together.
+- [docs/MODELS.md](docs/MODELS.md): 0G Router model catalog and model choice.
+- [docs/PROOF.md](docs/PROOF.md): recorded, reproducible proof of concept.
 
 ## Team
 

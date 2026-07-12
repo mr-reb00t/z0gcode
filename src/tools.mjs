@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { listSkills, readSkill } from "./skills.mjs";
+import { discoverSkills, readUserSkill } from "./user-skills.mjs";
 import { savePlan } from "./plan.mjs";
 
 const MAX_READ = 200_000; // chars
@@ -146,8 +147,8 @@ export const TOOL_DEFS = [
   {
     type: "function",
     function: {
-      name: "read_0g_skill",
-      description: "Read a bundled 0G skill doc for accurate SDK patterns. Names: chain, compute, storage, network, security, testing. Call with no name to list them.",
+      name: "read_skill",
+      description: "Read a skill's full instructions by name. Skills include bundled 0G SDK skills (chain, compute, storage, network, security, testing) and any user or project skills listed in the system prompt. Call with no name to list all available skills.",
       parameters: {
         type: "object",
         properties: { name: { type: "string" } },
@@ -226,13 +227,19 @@ export function makeExecutor({ cwd, allowBash }) {
           const done = plan.filter((p) => p.status === "completed").length;
           return { ok: true, summary: `plan ${done}/${plan.length}`, content: "Plan updated.", plan };
         }
+        case "read_skill":
         case "read_0g_skill": {
+          const userNames = () => discoverSkills(cwd).map((s) => s.name);
           if (!args.name) {
-            return { ok: true, summary: "list 0G skills", content: "Available 0G skills: " + listSkills().join(", ") };
+            const all = [...listSkills(), ...userNames()];
+            return { ok: true, summary: "list skills", content: "Available skills: " + (all.length ? all.join(", ") : "(none)") };
           }
-          const doc = readSkill(args.name);
-          if (!doc) return { ok: false, summary: `skill ${args.name} not found`, content: "Unknown skill. Available: " + listSkills().join(", ") };
-          return { ok: true, summary: `0G skill: ${args.name}`, content: doc };
+          const doc = readSkill(args.name) || readUserSkill(cwd, args.name);
+          if (!doc) {
+            const all = [...listSkills(), ...userNames()];
+            return { ok: false, summary: `skill ${args.name} not found`, content: "Unknown skill. Available: " + all.join(", ") };
+          }
+          return { ok: true, summary: `skill: ${args.name}`, content: doc };
         }
         default:
           return { ok: false, summary: `unknown tool ${name}`, content: `No such tool: ${name}` };
