@@ -1,5 +1,6 @@
 // The agentic loop: reason on 0G, call tools, feed results back, repeat until done.
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import { CONFIG, modelChain } from "./config.mjs";
 import { completeStream } from "./client.mjs";
 import { TOOL_DEFS, makeExecutor } from "./tools.mjs";
@@ -52,12 +53,16 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, onModel, history, mcp }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
+  const q = !!quiet;
   // "" means an explicit unset (use the model's own default); undefined falls back.
   const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
   const provDir = sessionDir || path.join(cwd, ".z0g");
   const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir });
-  const toolSet = mcp?.tools?.length ? [...TOOL_DEFS, ...mcp.tools] : TOOL_DEFS;
+  // Restrict the toolset for subagents (read-only); never give a subagent spawn_subagents.
+  let baseTools = toolNames ? TOOL_DEFS.filter((t) => toolNames.includes(t.function.name)) : TOOL_DEFS;
+  if (isSubagent) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents");
+  const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;
   const models = modelChain(preferredModel);
   const prov = makeProvenance(provDir);
   const messages = history && history.length
@@ -68,6 +73,8 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
   const failCounts = {}; // per-tool failure counter, drives model escalation
   let escalate = false;
   let activeModel = models[0];
+  const usageTotal = { prompt: 0, completion: 0, total: 0 };
+  let finalText = "";
 
   for (let step = 0; step < CONFIG.maxSteps; step++) {
     // Choose model order: escalate a stuck turn to a stronger fallback instead of looping.
@@ -75,15 +82,14 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
     if (escalate) {
       const stronger = models.find((m) => m !== activeModel) || activeModel;
       order = [stronger, ...models.filter((m) => m !== stronger)];
-      console.log("  " + ui.warn((ui.uiTTY ? "▲" : "!") + " escalating to " + stronger));
+      if (!q) console.log("  " + ui.warn((ui.uiTTY ? "▲" : "!") + " escalating to " + stronger));
       escalate = false;
     } else {
       order = [activeModel, ...models.filter((m) => m !== activeModel)];
     }
 
-    ui.thinking(order[0]);
+    if (!q) ui.thinking(order[0]);
     let out;
-    let streamed = false;
     let mdOut = null;
     try {
       out = await completeStream(client, {
@@ -91,40 +97,51 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
         messages,
         tools: toolSet,
         effort,
-        onDelta: (t) => {
-          if (!streamed) {
-            ui.clearThinking();
-            streamed = true;
-            mdOut = ui.assistantStream(); // render the answer as markdown, line by line
-          }
-          mdOut.push(t);
-        },
+        onDelta: q
+          ? undefined
+          : (t) => {
+              if (!mdOut) {
+                ui.clearThinking();
+                mdOut = ui.assistantStream(); // render the answer as markdown, line by line
+              }
+              mdOut.push(t);
+            },
       });
     } catch (e) {
-      ui.clearThinking();
-      ui.error(`All 0G models failed: ${e.message}`);
-      return { ok: false, steps: step, messages };
+      if (!q) {
+        ui.clearThinking();
+        ui.error(`All 0G models failed: ${e.message}`);
+      }
+      usageTotal.total = usageTotal.prompt + usageTotal.completion;
+      return { ok: false, steps: step, messages, finalText, usageTotal };
     }
-    ui.clearThinking();
+    if (!q) ui.clearThinking();
     if (mdOut) mdOut.end();
     activeModel = out.model;
     if (onModel) onModel(out.model);
+    if (out.usage) {
+      usageTotal.prompt += out.usage.prompt_tokens || out.usage.input_tokens || 0;
+      usageTotal.completion += out.usage.completion_tokens || out.usage.output_tokens || 0;
+    }
     const msg = out.message;
     messages.push(msg);
 
     const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
     if (toolCalls.length === 0) {
-      if (!streamed) ui.assistant(msg.content || "(done)");
-      ui.hud(out.model, out.usage, effort);
-      return { ok: true, steps: step + 1, changes: prov.count(), messages };
+      finalText = (msg.content || "").trim();
+      if (!q) {
+        if (!mdOut) ui.assistant(msg.content || "(done)");
+        ui.hud(out.model, out.usage, effort);
+      }
+      usageTotal.total = usageTotal.prompt + usageTotal.completion;
+      return { ok: true, steps: step + 1, changes: prov.count(), messages, finalText, usageTotal };
     }
 
     for (const tc of toolCalls) {
       const name = tc.function?.name;
       const args = parseArgs(tc.function?.arguments);
       if (args === null) {
-        ui.toolCall(name, "(bad args)");
-        ui.toolResult(false, "invalid JSON arguments");
+        if (!q) { ui.toolCall(name, "(bad args)"); ui.toolResult(false, "invalid JSON arguments"); }
         messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: could not parse JSON arguments. Re-emit the tool call with valid JSON." });
         continue;
       }
@@ -133,21 +150,55 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
       recent.push(key);
       if (recent.length > 6) recent.shift();
       if (recent.filter((k) => k === key).length >= 3) {
-        ui.toolResult(false, "loop detected, stopping");
+        if (!q) ui.toolResult(false, "loop detected, stopping");
         messages.push({ role: "tool", tool_call_id: tc.id, content: "STOP: you called this exact tool 3 times. Change approach or finish." });
         continue;
       }
 
-      ui.toolCall(name, argSummary(name, args));
+      // Parallel subagents: routed here, not through the normal executor.
+      if (name === "spawn_subagents") {
+        if (isSubagent) {
+          if (!q) { ui.toolCall(name, ""); ui.toolResult(false, "subagents cannot spawn subagents"); }
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: a subagent cannot spawn subagents." });
+          continue;
+        }
+        const subtasks = (Array.isArray(args.tasks) ? args.tasks.filter((t) => t && typeof t.prompt === "string" && t.prompt.trim()) : []).slice(0, 12);
+        if (!subtasks.length) {
+          if (!q) { ui.toolCall(name, ""); ui.toolResult(false, "no tasks"); }
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: provide tasks: [{ prompt }]." });
+          continue;
+        }
+        if (!q) ui.subagentsStart(subtasks.length);
+        const subResults = await runSubagents({
+          client, tasks: subtasks, cwd, sessionDir: provDir,
+          preferredModel, preferredEffort,
+          onOne: q ? null : (r) => ui.subagentOne(r),
+        });
+        if (!q) ui.subagentsSummary(subResults);
+        // Bound the tool result so a big fan-out can't overflow the parent context.
+        // Full untruncated output stays in the saved per-subagent transcripts.
+        const PER_SUB = 8000;
+        const TOTAL_SUB = 40000;
+        const clip = (s, n) => (s && s.length > n ? s.slice(0, n) + "\n... [truncated]" : (s || ""));
+        let combined = subResults.map((r) => `## ${r.label} (${r.ok ? "ok" : "failed"})\n${clip(r.summary, PER_SUB)}`).join("\n\n");
+        if (combined.length > TOTAL_SUB) combined = combined.slice(0, TOTAL_SUB) + "\n... [more subagent output truncated; see .z0g/sessions/<id>/subagents/]";
+        const totalTok = subResults.reduce((a, r) => a + (r.tokens || 0), 0);
+        messages.push({ role: "tool", tool_call_id: tc.id, content: `Subagent results (${subResults.length} agents, ${totalTok} tokens):\n\n${combined}` });
+        continue;
+      }
+
+      if (!q) ui.toolCall(name, argSummary(name, args));
       const res = mcp && mcp.isMcp(name) ? await mcp.call(name, args) : await execute(name, args);
-      ui.toolResult(res.ok, res.summary);
+      if (!q) ui.toolResult(res.ok, res.summary);
 
       if (res.ok) {
         failCounts[name] = 0;
-        if (res.plan) ui.renderPlan(res.plan);
+        if (!q && res.plan) ui.renderPlan(res.plan);
         if (res.change) {
-          const diff = ui.renderDiff(res.change.before, res.change.after);
-          if (diff) console.log(diff);
+          if (!q) {
+            const diff = ui.renderDiff(res.change.before, res.change.after);
+            if (diff) console.log(diff);
+          }
           await prov.record({
             pathRel: res.change.path,
             before: res.change.before,
@@ -165,6 +216,62 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
     }
   }
 
-  ui.error(`Reached max steps (${CONFIG.maxSteps}).`);
-  return { ok: false, steps: CONFIG.maxSteps, changes: prov.count(), messages };
+  if (!q) ui.error(`Reached max steps (${CONFIG.maxSteps}).`);
+  usageTotal.total = usageTotal.prompt + usageTotal.completion;
+  return { ok: false, steps: CONFIG.maxSteps, changes: prov.count(), messages, finalText, usageTotal };
+}
+
+// Run independent read-only subtasks in parallel (capped), each as an isolated
+// subagent. Returns [{ label, ok, summary, tokens }]. Subagents cannot write,
+// run shell, or spawn further subagents. Transcripts are saved per subagent.
+const SUBAGENT_TOOLS = ["read_file", "search_files", "list_dir", "read_skill", "update_plan"];
+
+export async function runSubagents({ client, tasks, cwd, sessionDir, preferredModel, preferredEffort, onOne }) {
+  const cap = Math.max(1, CONFIG.maxParallel);
+  const results = new Array(tasks.length);
+  // Each subagent gets its OWN directory so its plan/provenance stay isolated
+  // from the parent and from siblings; number after any existing subdirs so a
+  // second fan-out does not clobber the first. base is computed once up front.
+  const rootDir = sessionDir ? path.join(sessionDir, "subagents") : null;
+  let base = 0;
+  if (rootDir) {
+    try {
+      await fs.mkdir(rootDir, { recursive: true });
+      base = (await fs.readdir(rootDir)).filter((n) => /^\d+$/.test(n)).length;
+    } catch {}
+  }
+  let next = 0;
+  const runOne = async (i) => {
+    const t = tasks[i];
+    const label = (t.label && String(t.label).trim()) || `subagent ${i + 1}`;
+    const subDir = rootDir ? path.join(rootDir, String(base + i + 1)) : undefined;
+    let res = null;
+    try {
+      res = await runAgent({
+        client, task: t.prompt, cwd, sessionDir: subDir,
+        allowBash: false, preferredModel, preferredEffort,
+        quiet: true, toolNames: SUBAGENT_TOOLS, isSubagent: true,
+      });
+      results[i] = { label, ok: !!res.ok, summary: res.finalText || "(no summary)", tokens: res.usageTotal?.total || 0 };
+    } catch (e) {
+      results[i] = { label, ok: false, summary: "error: " + e.message, tokens: 0 };
+    }
+    try {
+      if (subDir) {
+        await fs.mkdir(subDir, { recursive: true });
+        await fs.writeFile(path.join(subDir, "transcript.json"), JSON.stringify({ task: t, result: results[i], messages: res?.messages || [] }, null, 2), "utf8");
+      }
+    } catch {}
+    if (onOne) onOne(results[i]);
+  };
+  const pool = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      await runOne(i);
+    }
+  };
+  const workers = [];
+  for (let w = 0; w < Math.min(cap, tasks.length); w++) workers.push(pool());
+  await Promise.all(workers);
+  return results;
 }

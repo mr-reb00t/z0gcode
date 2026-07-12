@@ -7,7 +7,8 @@ bin/z0g.mjs        CLI: run / models / doctor / attest / interactive; flags; bra
   └─ src/agent.mjs      the agentic loop (reason → call tools → feed results → repeat)
        ├─ src/client.mjs      robust 0G Compute Router client (fallback, retry, empty-guard, usage+id)
        ├─ src/tools.mjs       tools: search_files, read_file, write_file, edit_file, list_dir,
-       │                      run_bash, upload_0g_storage, deploy_0g_chain, update_plan, read_skill
+       │                      run_bash, upload_0g_storage, deploy_0g_chain, update_plan, read_skill,
+       │                      spawn_subagents (parallel read-only fan-out, run by src/agent.mjs)
        ├─ src/provenance.mjs  writes .z0g/provenance.json (change hash ↔ 0G model + response id)
        ├─ src/skills.mjs      0G knowledge: system primer + loader for skills/0g/*.md
        ├─ src/user-skills.mjs user skills: discover ~/.z0gcode/skills + .z0g/skills, inject + read

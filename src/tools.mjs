@@ -155,6 +155,31 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "spawn_subagents",
+      description: "Run several INDEPENDENT read-only subtasks in parallel, each as its own isolated agent, and get back a short summary of each. Use it to review or analyze many files at once, do parallel research, audit for issues, or map a codebase, when the subtasks do not depend on each other. Subagents are READ-ONLY (they cannot write files, run shell, deploy, or spawn more subagents), so use them to gather and understand, then act yourself. Keep it to a handful of focused subtasks.",
+      parameters: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            description: "The independent subtasks to run in parallel.",
+            items: {
+              type: "object",
+              properties: {
+                prompt: { type: "string", description: "The self-contained subtask instruction." },
+                label: { type: "string", description: "Short label for display." },
+              },
+              required: ["prompt"],
+            },
+          },
+        },
+        required: ["tasks"],
+      },
+    },
+  },
 ];
 
 function safeResolve(cwd, p) {

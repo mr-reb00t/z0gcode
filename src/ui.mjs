@@ -213,6 +213,19 @@ export function toolResult(success, summary) {
   console.log("    " + mark + " " + muted(summary || ""));
 }
 
+// Subagent fan-out status (compact; one line per subagent as it finishes).
+export function subagentsStart(n) {
+  console.log("  " + accent(GLYPH.chevron) + " " + strong("spawn_subagents") + " " + muted(n + " parallel, read-only"));
+}
+export function subagentOne(r) {
+  const mark = r.ok ? ok(GLYPH.ok) : err(GLYPH.no);
+  console.log("    " + mark + " " + muted((r.label || "subagent") + " · " + (r.tokens || 0) + " tok"));
+}
+export function subagentsSummary(results) {
+  const tot = results.reduce((a, r) => a + (r.tokens || 0), 0);
+  console.log("    " + muted(results.length + " subagents · " + tot + " tokens · ") + accent(GLYPH.seal) + muted(" 0G Compute (TEE)"));
+}
+
 let spinTimer = null;
 let spinFrame = 0;
 const SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";

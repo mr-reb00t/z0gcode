@@ -35,6 +35,9 @@ export const CONFIG = {
 
   // Reasoning effort passed to the Router as reasoning_effort. Null = unset.
   effort: normEffort(process.env.ZOG_EFFORT || settings.effort),
+
+  // Max subagents running at once (spawn_subagents fan-out).
+  maxParallel: Math.max(1, Number(process.env.ZOG_MAX_PARALLEL || 4)),
 };
 
 export function modelChain(preferred) {
