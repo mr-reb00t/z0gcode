@@ -53,7 +53,8 @@ function parseArgs(raw) {
 }
 
 export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, onModel, history, mcp }) {
-  const effort = preferredEffort || CONFIG.effort;
+  // "" means an explicit unset (use the model's own default); undefined falls back.
+  const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
   const provDir = sessionDir || path.join(cwd, ".z0g");
   const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir });
   const toolSet = mcp?.tools?.length ? [...TOOL_DEFS, ...mcp.tools] : TOOL_DEFS;

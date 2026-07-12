@@ -71,7 +71,7 @@ const SLASH_COMMANDS = [
   ["/new", "Start a new chat (/new [title])"],
   ["/rename", "Rename the current chat (/rename <title>)"],
   ["/model", "Pick the active 0G model (saved to settings)"],
-  ["/effort", "Set reasoning effort (low|medium|high)"],
+  ["/effort", "Set reasoning effort (low|medium|high|default)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
   ["/plan", "Show the current task checklist"],
@@ -208,7 +208,12 @@ function parse(argv) {
     else if (a === "--resume") flags.resume = true;
     else if (a === "--new") flags.new = true;
     else if (a === "--model") flags.model = argv[++i];
-    else if (a === "--effort") flags.effort = normEffort(argv[++i]);
+    else if (a === "--effort") {
+      const v = String(argv[++i] || "").toLowerCase().trim();
+      if (EFFORT_LEVELS.includes(v)) flags.effort = v;
+      else if (["default", "off", "none", "unset", "model"].includes(v)) flags.effort = ""; // explicit unset
+      // otherwise leave undefined (falls back to the saved/env default)
+    }
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
     else if (a === "--cwd") flags.cwd = argv[++i];
@@ -518,12 +523,16 @@ async function repl(flags) {
         }
       }
       else if (cmd === "effort") {
-        if (arg) {
-          const lv = normEffort(arg);
-          if (lv) { effort = lv; saveSetting("effort", lv); ui.info("effort set to " + lv + " (saved)"); }
-          else console.log(ui.warn("invalid effort. valid: " + EFFORT_LEVELS.join(", ")));
+        const a = arg.toLowerCase().trim();
+        if (!a) {
+          const cur = effort === "" ? null : (effort || CONFIG.effort);
+          ui.info("effort: " + (cur || "model default") + "  ·  valid: " + EFFORT_LEVELS.join(", ") + ", default");
+        } else if (EFFORT_LEVELS.includes(a)) {
+          effort = a; saveSetting("effort", a); ui.info("effort set to " + a + " (saved)");
+        } else if (["default", "off", "none", "unset", "model"].includes(a)) {
+          effort = ""; saveSetting("effort", undefined); ui.info("effort: model default (saved)");
         } else {
-          ui.info("effort: " + (effort || CONFIG.effort || "unset") + "  ·  valid: " + EFFORT_LEVELS.join(", "));
+          console.log(ui.warn("invalid effort. valid: " + EFFORT_LEVELS.join(", ") + ", default"));
         }
       }
       else if (cmd === "skills") cmdSkills(cwd, arg);
