@@ -11,6 +11,13 @@ function envList(name, fallback) {
 // User's saved preferences (e.g. a model picked with /model). Env still wins.
 const settings = loadSettings(process.cwd());
 
+// Reasoning effort: low | medium | high, or null (unset -> model default).
+export const EFFORT_LEVELS = ["low", "medium", "high"];
+export function normEffort(v) {
+  const s = String(v || "").toLowerCase().trim();
+  return EFFORT_LEVELS.includes(s) ? s : null;
+}
+
 export const CONFIG = {
   // 0G Compute Router (OpenAI-compatible). Mainnet by default.
   baseURL: process.env.ZOG_BASE_URL || "https://router-api.0g.ai/v1",
@@ -25,6 +32,9 @@ export const CONFIG = {
   maxSteps: Number(process.env.ZOG_MAX_STEPS || 30),
   maxTokens: Number(process.env.ZOG_MAX_TOKENS || 16384),
   temperature: Number(process.env.ZOG_TEMPERATURE || 0.2),
+
+  // Reasoning effort passed to the Router as reasoning_effort. Null = unset.
+  effort: normEffort(process.env.ZOG_EFFORT || settings.effort),
 };
 
 export function modelChain(preferred) {

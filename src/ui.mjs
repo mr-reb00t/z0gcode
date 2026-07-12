@@ -389,12 +389,13 @@ export function streamChunk(s) {
   process.stdout.write(s);
 }
 
-export function hud(model, usage) {
+export function hud(model, usage, effort) {
   const i = usage?.prompt_tokens ?? usage?.input_tokens;
   const o = usage?.completion_tokens ?? usage?.output_tokens;
   const toks = i != null || o != null ? `${i ?? "?"} in / ${o ?? "?"} out · ` : "";
+  const eff = effort ? "effort " + effort + " · " : "";
   console.log(
-    muted("  · " + toks + model + " · ") + accent(GLYPH.seal) + muted(" 0G Compute (TEE)")
+    muted("  · " + toks + model + " · " + eff) + accent(GLYPH.seal) + muted(" 0G Compute (TEE)")
   );
 }
 

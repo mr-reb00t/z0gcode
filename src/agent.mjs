@@ -52,7 +52,8 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, onModel, history, mcp }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, onModel, history, mcp }) {
+  const effort = preferredEffort || CONFIG.effort;
   const provDir = sessionDir || path.join(cwd, ".z0g");
   const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir });
   const toolSet = mcp?.tools?.length ? [...TOOL_DEFS, ...mcp.tools] : TOOL_DEFS;
@@ -88,6 +89,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
         models: order,
         messages,
         tools: toolSet,
+        effort,
         onDelta: (t) => {
           if (!streamed) {
             ui.clearThinking();
@@ -112,7 +114,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
     const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
     if (toolCalls.length === 0) {
       if (!streamed) ui.assistant(msg.content || "(done)");
-      ui.hud(out.model, out.usage);
+      ui.hud(out.model, out.usage, effort);
       return { ok: true, steps: step + 1, changes: prov.count(), messages };
     }
 

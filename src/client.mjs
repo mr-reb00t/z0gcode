@@ -15,19 +15,21 @@ export function makeClient() {
 
 // Try each model in order; retry a model on 503/429; move on to the next on hard error.
 // Returns { message, model, usage, responseId, systemFingerprint }. Throws only if every model fails.
-export async function complete(client, { models, messages, tools }) {
+export async function complete(client, { models, messages, tools, effort }) {
   let lastErr;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await client.chat.completions.create({
+        const body = {
           model,
           messages,
           tools,
           tool_choice: "auto",
           max_tokens: CONFIG.maxTokens,
           temperature: CONFIG.temperature,
-        });
+        };
+        if (effort) body.reasoning_effort = effort;
+        const res = await client.chat.completions.create(body);
         const message = res.choices?.[0]?.message;
         if (!message) throw new Error("empty response");
         // A turn with neither content nor tool calls is unusable: treat as failure.
@@ -61,12 +63,12 @@ export async function complete(client, { models, messages, tools }) {
 
 // Streaming variant: calls onDelta(text) for content as it arrives and assembles
 // tool calls from streamed fragments. Same fallback/retry as complete().
-export async function completeStream(client, { models, messages, tools, onDelta }) {
+export async function completeStream(client, { models, messages, tools, onDelta, effort }) {
   let lastErr;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const stream = await client.chat.completions.create({
+        const body = {
           model,
           messages,
           tools,
@@ -75,7 +77,9 @@ export async function completeStream(client, { models, messages, tools, onDelta 
           temperature: CONFIG.temperature,
           stream: true,
           stream_options: { include_usage: true },
-        });
+        };
+        if (effort) body.reasoning_effort = effort;
+        const stream = await client.chat.completions.create(body);
         let content = "";
         const acc = [];
         let usage = null;
