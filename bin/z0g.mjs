@@ -23,6 +23,7 @@ Usage:
   z0g models             List the 0G models available on the Router
   z0g doctor             Check your 0G setup (key, connectivity, model)
   z0g attest             Show the provenance manifest (which 0G model wrote which change)
+  z0g serve --mcp        Run as an MCP server exposing z0gcode's 0G tools
 
 Options:
   --auto                 Allow shell commands and on-chain actions (run_bash, upload_0g_storage)
@@ -55,6 +56,7 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--auto") flags.auto = true;
+    else if (a === "--mcp") flags.mcp = true;
     else if (a === "--continue") flags.cont = true;
     else if (a === "--model") flags.model = argv[++i];
     else if (a === "--verify") flags.verify = argv[++i];
@@ -228,6 +230,15 @@ async function main() {
     if (sub === "models") return await cmdModels();
     if (sub === "doctor") return await cmdDoctor();
     if (sub === "attest") return await printAttest(resolveCwd(flags));
+    if (sub === "serve") {
+      if (flags.mcp) {
+        const { startMcpServer } = await import("../src/mcp-server.mjs");
+        await startMcpServer({ cwd: resolveCwd(flags), allowBash: flags.auto });
+        return; // stays alive serving the stdio MCP transport
+      }
+      console.log("Usage: z0g serve --mcp");
+      return;
+    }
     if (sub === "goal") {
       ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);
       return await cmdGoal(positional.slice(1).join(" "), flags);

@@ -44,7 +44,7 @@ It is not a rebrand of a big framework: the agent loop, tools, and CLI are origi
 - **Session memory**: the conversation persists per directory; `--continue` resumes it and the REPL keeps context across prompts.
 - **Goal loop + slash commands**: `z0g goal "<objective>"` runs and re-runs until a verify command (e.g. `npm test`) passes; the REPL has `/goal`, `/model`, `/attest`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`.
 - **Planning**: on multi-step tasks the agent lays out a visible checklist (`update_plan`), updating it as it works; `/plan` shows it.
-- **MCP client**: connect to MCP servers (0G or third-party) via `.z0g/mcp.json`; their tools appear to the agent as `mcp_<server>__<tool>`, turning z0gcode into a hub.
+- **MCP, both ways**: connect to MCP servers (0G or third-party) via `.z0g/mcp.json` (their tools appear as `mcp_<server>__<tool>`), and run `z0g serve --mcp` to expose z0gcode's own 0G tools (skills, storage) as an MCP server for other agents (Claude Code, Cursor). A Track 2 multiplier.
 
 Feature proposals and specs live under [openspec/](openspec/) (OpenSpec, spec-driven).
 
