@@ -53,15 +53,17 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
   const q = !!quiet;
   // "" means an explicit unset (use the model's own default); undefined falls back.
   const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
+  const subOn = preferredSubagents !== undefined ? preferredSubagents : CONFIG.subagents;
   const provDir = sessionDir || path.join(cwd, ".z0g");
   const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir });
-  // Restrict the toolset for subagents (read-only); never give a subagent spawn_subagents.
+  // Restrict the toolset for subagents (read-only), and drop spawn_subagents when
+  // it is a subagent (no recursion) or the toggle is off.
   let baseTools = toolNames ? TOOL_DEFS.filter((t) => toolNames.includes(t.function.name)) : TOOL_DEFS;
-  if (isSubagent) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents");
+  if (isSubagent || !subOn) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents");
   const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;
   const models = modelChain(preferredModel);
   const prov = makeProvenance(provDir);

@@ -5,7 +5,7 @@ import readline from "node:readline";
 import path from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { exec } from "node:child_process";
-import { CONFIG, normEffort, EFFORT_LEVELS } from "../src/config.mjs";
+import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
 import { makeClient } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
 import { runGoal } from "../src/goal.mjs";
@@ -43,6 +43,7 @@ function helpText() {
       ["--continue", "Continue the saved session in this directory"],
       ["--model <id>", "Override the model (default " + CONFIG.model + ")"],
       ["--effort <l>", "Reasoning effort: low, medium, high (default: model's own)"],
+      ["--no-subagents", "Disable parallel subagents for this run"],
       ['--verify "<cmd>"', "Run, then verify and self-correct with this command"],
       ["--auto-verify", "Same, auto-detecting the verify command"],
       ["--max-steps <n>", "Max agent steps (default " + CONFIG.maxSteps + ")"],
@@ -72,6 +73,7 @@ const SLASH_COMMANDS = [
   ["/rename", "Rename the current chat (/rename <title>)"],
   ["/model", "Pick the active 0G model (saved to settings)"],
   ["/effort", "Set reasoning effort (low|medium|high|default)"],
+  ["/subagents", "Enable or disable parallel subagents (on|off)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
   ["/plan", "Show the current task checklist"],
@@ -214,6 +216,8 @@ function parse(argv) {
       else if (["default", "off", "none", "unset", "model"].includes(v)) flags.effort = ""; // explicit unset
       // otherwise leave undefined (falls back to the saved/env default)
     }
+    else if (a === "--subagents") flags.subagents = boolOf(argv[++i]);
+    else if (a === "--no-subagents") flags.subagents = false;
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
     else if (a === "--cwd") flags.cwd = argv[++i];
@@ -315,6 +319,7 @@ async function cmdDoctor() {
   group("Runtime");
   row("open", "Limits", ui.muted(CONFIG.maxSteps + " steps · " + CONFIG.maxTokens + " max tokens · temp " + CONFIG.temperature));
   row("open", "Effort", ui.muted(CONFIG.effort || "unset (model default)"));
+  row("open", "Subagents", ui.muted(CONFIG.subagents ? "on · up to " + CONFIG.maxParallel + " parallel" : "off"));
 
   console.log("");
   if (models && def) {
@@ -404,13 +409,13 @@ async function runTask(task, flags) {
     // Auto-verify: a normal run becomes self-correcting when a verify command is present.
     const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
     if (verifyCmd) {
-      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, verifyCmd, maxIters: 3, history: opened.history });
+      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, verifyCmd, maxIters: 3, history: opened.history });
       return;
     }
     const client = makeClient();
     const mcp = await loadMcp(cwd);
     if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, history: opened.history, mcp });
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, history: opened.history, mcp });
     if (res?.messages) await saveMessages(cwd, sessionId, res.messages);
     await mcp?.close();
   } finally {
@@ -433,7 +438,7 @@ async function cmdGoal(objective, flags) {
   try {
     const verifyCmd = flags.verify || detectVerifyCmd(cwd);
     if (!flags.auto) ui.info("tip: run goal with --auto so the agent can run and verify its own work.");
-    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, verifyCmd, maxIters: 3, history: opened.history });
+    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, verifyCmd, maxIters: 3, history: opened.history });
   } finally {
     process.removeListener("SIGINT", onSig);
     pruneEmptySync(cwd, opened.id);
@@ -450,6 +455,7 @@ async function repl(flags) {
   let history = opened.history;
   let model = flags.model;
   let effort = flags.effort;
+  let subagents = flags.subagents;
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
 
@@ -535,6 +541,18 @@ async function repl(flags) {
           console.log(ui.warn("invalid effort. valid: " + EFFORT_LEVELS.join(", ") + ", default"));
         }
       }
+      else if (cmd === "subagents") {
+        const a = arg.toLowerCase().trim();
+        if (a === "on" || a === "off") {
+          subagents = a === "on"; saveSetting("subagents", subagents);
+          ui.info("subagents " + (subagents ? "on" : "off") + " (saved)");
+        } else if (!a) {
+          const cur = subagents !== undefined ? subagents : CONFIG.subagents;
+          ui.info("subagents: " + (cur ? "on" : "off") + "  ·  usage: /subagents on|off");
+        } else {
+          console.log(ui.warn("usage: /subagents on|off"));
+        }
+      }
       else if (cmd === "skills") cmdSkills(cwd, arg);
       else if (cmd === "chats") {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
@@ -583,14 +601,14 @@ async function repl(flags) {
       else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
       } else ui.info("unknown command; /help for the list");
       rl.prompt();
       continue;
     }
 
-    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, history, mcp });
+    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, history, mcp });
     history = res.messages;
     await saveMessages(cwd, sessionId, history);
     rl.prompt();

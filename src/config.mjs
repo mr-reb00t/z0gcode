@@ -18,6 +18,14 @@ export function normEffort(v) {
   return EFFORT_LEVELS.includes(s) ? s : null;
 }
 
+// Parse a boolean-ish value: booleans pass through; off/false/0/no -> false,
+// anything else truthy -> true; undefined/null -> undefined (not set).
+export function boolOf(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v === "boolean") return v;
+  return !/^(off|false|0|no)$/i.test(String(v).trim());
+}
+
 export const CONFIG = {
   // 0G Compute Router (OpenAI-compatible). Mainnet by default.
   baseURL: process.env.ZOG_BASE_URL || "https://router-api.0g.ai/v1",
@@ -38,6 +46,13 @@ export const CONFIG = {
 
   // Max subagents running at once (spawn_subagents fan-out).
   maxParallel: Math.max(1, Number(process.env.ZOG_MAX_PARALLEL || 4)),
+
+  // Whether the spawn_subagents tool is offered. env > settings > on.
+  subagents: (() => {
+    const e = boolOf(process.env.ZOG_SUBAGENTS);
+    if (e !== undefined) return e;
+    return typeof settings.subagents === "boolean" ? settings.subagents : true;
+  })(),
 };
 
 export function modelChain(preferred) {
