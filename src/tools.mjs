@@ -239,12 +239,12 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
         }
         case "write_file": {
           const abs = safeResolve(cwd, args.path);
-          let before = "";
-          try { before = await fs.readFile(abs, "utf8"); } catch { before = ""; }
+          let before = "", existed = true;
+          try { before = await fs.readFile(abs, "utf8"); } catch { before = ""; existed = false; }
           await fs.mkdir(path.dirname(abs), { recursive: true });
           const after = args.content ?? "";
           await fs.writeFile(abs, after, "utf8");
-          return { ok: true, summary: `wrote ${args.path} (${after.length} bytes)`, content: "OK", change: { path: args.path, before, after } };
+          return { ok: true, summary: `wrote ${args.path} (${after.length} bytes)`, content: "OK", change: { path: args.path, before, after, created: !existed } };
         }
         case "edit_file": {
           const abs = safeResolve(cwd, args.path);

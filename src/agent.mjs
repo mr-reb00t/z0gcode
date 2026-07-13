@@ -8,6 +8,7 @@ import { SYSTEM_0G } from "./skills.mjs";
 import { skillsPromptBlock } from "./user-skills.mjs";
 import { contextPromptBlock } from "./context.mjs";
 import { makeProvenance } from "./provenance.mjs";
+import { recordCheckpoint } from "./checkpoints.mjs";
 import * as ui from "./ui.mjs";
 
 function systemPrompt(cwd) {
@@ -72,6 +73,8 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
   const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;
   const models = modelChain(preferredModel);
   const prov = makeProvenance(provDir);
+  // A per-run id groups this turn's edits so `z0g undo` reverts them together.
+  const runId = "r" + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36);
   const messages = history && history.length
     ? [...history, { role: "user", content: task }]
     : [{ role: "system", content: systemPrompt(cwd) }, { role: "user", content: task }];
@@ -213,6 +216,14 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
             model: out.model,
             responseId: out.responseId,
           });
+          if (!isSubagent) {
+            await recordCheckpoint(provDir, {
+              runId, ts: new Date().toISOString(),
+              task: typeof task === "string" ? task.slice(0, 80) : "",
+              path: res.change.path, before: res.change.before, after: res.change.after,
+              created: !!res.change.created, tool: name, model: out.model,
+            });
+          }
         }
       } else {
         failCounts[name] = (failCounts[name] || 0) + 1;

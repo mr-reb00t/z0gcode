@@ -9,6 +9,7 @@ import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
 import { makeClient } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
 import { INIT_TASK } from "../src/context.mjs";
+import { undoLastTurn, readCheckpointLog, activeTurns } from "../src/checkpoints.mjs";
 import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
 import {
@@ -38,6 +39,7 @@ function helpText() {
       ["z0g skills", "List user/project skills (enable|disable <name>)"],
       ["z0g doctor", "Check your 0G setup (key, connectivity, model)"],
       ["z0g attest", "Show which 0G model wrote which change"],
+      ["z0g undo", "Revert the file edits from the last turn"],
       ["z0g share", "Export a session to 0G Storage (--anchor for 0G Chain)"],
     ]],
     ["Media", [
@@ -88,6 +90,8 @@ const SLASH_COMMANDS = [
   ["/onchain", "Enable or disable gas-spending on-chain actions (on|off)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
+  ["/undo", "Revert the file edits from the last turn"],
+  ["/checkpoints", "List the turns you can undo"],
   ["/share", "Export this session to 0G Storage (/share anchor to anchor on-chain)"],
   ["/plan", "Show the current task checklist"],
   ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
@@ -345,6 +349,41 @@ async function cmdInit(flags) {
   } else {
     console.log(ui.warn("The agent did not create AGENTS.md. " + (res?.finalText ? "It said: " + res.finalText.slice(0, 200) : "Try again or write it by hand.")));
   }
+}
+
+// Revert the most recent turn's file edits (restore before-content, delete
+// files the turn created), using the session's checkpoint log.
+async function cmdUndo(flags, sessionId) {
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  const id = sessionId || mostRecent(cwd);
+  if (!id) { console.log(ui.warn("No session yet, nothing to undo.")); return; }
+  const rep = await undoLastTurn(cwd, sessionDir(cwd, id));
+  if (!rep) { console.log(ui.warn("Nothing to undo in this chat.")); return; }
+  console.log(ui.section("Undo", rep.task || rep.runId));
+  for (const f of rep.files) {
+    const g = f.action === "failed" ? ui.err(ui.GLYPH.no) : ui.ok(ui.GLYPH.ok);
+    const note = f.diverged ? ui.warn(" (had changed since; overwritten)") : "";
+    console.log("  " + g + " " + f.action + " " + ui.strong(f.path) + (f.error ? ui.err(" " + f.error) : note));
+  }
+  console.log("\n  " + ui.muted("Reverted the last turn. Run undo again to step further back."));
+}
+
+// List the turns still available to undo (newest first).
+async function cmdCheckpoints(flags, sessionId) {
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  const id = sessionId || mostRecent(cwd);
+  if (!id) { console.log(ui.warn("No session yet.")); return; }
+  const turns = activeTurns(await readCheckpointLog(sessionDir(cwd, id)));
+  if (!turns.length) { ui.info("no checkpoints yet (the agent has not edited files in this chat)"); return; }
+  console.log(ui.section("Checkpoints", turns.length + " turn(s) you can undo"));
+  turns.slice(-12).reverse().forEach((t, i) => {
+    const files = [...new Set(t.edits.map((e) => e.path))];
+    const tag = i === 0 ? ui.accent("next undo") : ui.muted(ui.relTime(t.ts));
+    console.log("  " + ui.strong(files.length + " file" + (files.length === 1 ? "" : "s")) + "  " + ui.muted(files.join(", ")) + "  " + tag);
+    if (t.task) console.log("    " + ui.muted(t.task));
+  });
 }
 
 // Export a session (transcript + provenance) to 0G Storage, optionally anchoring
@@ -754,6 +793,8 @@ async function repl(flags) {
         await cmdShare({ ...flags, anchor: /anchor/.test(arg) || flags.anchor, onchain: activeOnchain() }, sessionId);
       }
       else if (cmd === "init") await cmdInit({ ...flags, force: /force|-f/.test(arg) });
+      else if (cmd === "undo") await cmdUndo(flags, sessionId);
+      else if (cmd === "checkpoints") await cmdCheckpoints(flags, sessionId);
       else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
@@ -786,6 +827,8 @@ async function main() {
     if (sub === "image") return await cmdImage(positional[1], positional[2], flags);
     if (sub === "transcribe") return await cmdTranscribe(positional[1], flags);
     if (sub === "init") return await cmdInit(flags);
+    if (sub === "undo") return await cmdUndo(flags);
+    if (sub === "checkpoints") return await cmdCheckpoints(flags);
     if (sub === "share") return await cmdShare(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
