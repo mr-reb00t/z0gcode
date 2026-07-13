@@ -7,6 +7,7 @@ import { discoverSkills, readUserSkill } from "./user-skills.mjs";
 import { savePlan } from "./plan.mjs";
 import { makeClient } from "./client.mjs";
 import { generateImage, transcribeAudio } from "./media.mjs";
+import { uploadFileToStorage } from "./anchor.mjs";
 
 const MAX_READ = 200_000; // chars
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", ".z0g", ".next", "build", "coverage", ".turbo"]);
@@ -221,7 +222,7 @@ function safeResolve(cwd, p) {
   return abs;
 }
 
-export function makeExecutor({ cwd, allowBash, sessionDir }) {
+export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
   const planDir = sessionDir || path.join(cwd, ".z0g");
   return async function execute(name, args) {
     try {
@@ -272,10 +273,10 @@ export function makeExecutor({ cwd, allowBash, sessionDir }) {
           return { ok: out.code === 0, summary: `bash exit ${out.code}`, content: out.text };
         }
         case "upload_0g_storage": {
-          return await uploadToStorage(cwd, args.path, allowBash);
+          return await uploadToStorage(cwd, args.path, onchain);
         }
         case "deploy_0g_chain": {
-          return await deployToChain(cwd, args, allowBash);
+          return await deployToChain(cwd, args, onchain);
         }
         case "update_plan": {
           const plan = Array.isArray(args.plan) ? args.plan : [];
@@ -385,48 +386,29 @@ async function searchFiles(cwd, query, glob, subpath) {
   return { count: results.length, text: results.join("\n") || "(no matches)" };
 }
 
-async function uploadToStorage(cwd, relPath, allowBash) {
-  if (!allowBash) {
-    return { ok: false, summary: "0g upload denied", content: "upload_0g_storage writes on-chain. Re-run z0gcode with --auto to allow it." };
+async function uploadToStorage(cwd, relPath, onchain) {
+  if (!onchain) {
+    return { ok: false, summary: "on-chain off", content: "On-chain actions are off. Enable with --onchain, /onchain on, or ZOG_ONCHAIN=on." };
   }
-  const key = process.env.ZOG_WALLET_KEY;
-  if (!key) {
+  if (!process.env.ZOG_WALLET_KEY) {
     return { ok: false, summary: "no wallet", content: "Set ZOG_WALLET_KEY to a funded 0G mainnet private key to upload to 0G Storage." };
   }
   const abs = safeResolve(cwd, relPath);
-  const RPC = process.env.ZOG_EVM_RPC || "https://evmrpc.0g.ai";
-  const INDEXER = process.env.ZOG_STORAGE_INDEXER || "https://indexer-storage-turbo.0g.ai";
   try {
-    const { ethers } = await import("ethers");
-    const { ZgFile, Indexer } = await import("@0gfoundation/0g-storage-ts-sdk");
-    const provider = new ethers.JsonRpcProvider(RPC);
-    const wallet = new ethers.Wallet(key, provider);
-    const indexer = new Indexer(INDEXER);
-    const file = await ZgFile.fromFilePath(abs);
-    try {
-      const [tree, treeErr] = await file.merkleTree();
-      if (treeErr) throw new Error(String(treeErr));
-      const root = tree.rootHash();
-      const [res, upErr] = await indexer.upload(file, RPC, wallet);
-      if (upErr) throw new Error(upErr.message || String(upErr));
-      const txHash = res?.txHash || res;
-      const rootHash = res?.rootHash || root;
-      return {
-        ok: true,
-        summary: `uploaded ${relPath} to 0G Storage`,
-        content: `0G Storage root: ${rootHash}\ntx: ${txHash}\nexplorer: https://chainscan.0g.ai/tx/${txHash}`,
-      };
-    } finally {
-      await file.close();
-    }
+    const { rootHash, txHash } = await uploadFileToStorage(abs);
+    return {
+      ok: true,
+      summary: `uploaded ${relPath} to 0G Storage`,
+      content: `0G Storage root: ${rootHash}\ntx: ${txHash}\nexplorer: https://chainscan.0g.ai/tx/${txHash}`,
+    };
   } catch (e) {
     return { ok: false, summary: "0g upload failed", content: `ERROR: ${e.message}. Ensure @0gfoundation/0g-storage-ts-sdk is installed and the wallet is funded.` };
   }
 }
 
-async function deployToChain(cwd, args, allowBash) {
-  if (!allowBash) {
-    return { ok: false, summary: "deploy denied", content: "deploy_0g_chain writes on-chain. Re-run z0gcode with --auto to allow it." };
+async function deployToChain(cwd, args, onchain) {
+  if (!onchain) {
+    return { ok: false, summary: "on-chain off", content: "On-chain actions are off. Enable with --onchain, /onchain on, or ZOG_ONCHAIN=on." };
   }
   const key = process.env.ZOG_WALLET_KEY;
   if (!key) {

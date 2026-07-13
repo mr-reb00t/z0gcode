@@ -14,12 +14,12 @@ function runCmd(cmd, cwd) {
   });
 }
 
-export async function runGoal({ client, objective, cwd, sessionId, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, verifyCmd, maxIters = 3, history: historyParam = null }) {
+export async function runGoal({ client, objective, cwd, sessionId, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, verifyCmd, maxIters = 3, history: historyParam = null }) {
   let history = historyParam ?? null;
   let task = objective;
   for (let iter = 1; iter <= maxIters; iter++) {
     console.log(ui.section("Goal", "iteration " + iter + "/" + maxIters));
-    const res = await runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, history });
+    const res = await runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, history });
     history = res.messages;
     if (sessionId && Array.isArray(history)) {
       try { await saveMessages(cwd, sessionId, history); } catch {}

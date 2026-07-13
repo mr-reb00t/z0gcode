@@ -20,6 +20,7 @@ import { saveSetting } from "../src/settings.mjs";
 import { fetchModels, orderChatModels } from "../src/models-info.mjs";
 import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
 import { generateImage, transcribeAudio } from "../src/media.mjs";
+import { uploadFileToStorage, anchorOnChain } from "../src/anchor.mjs";
 import { arrowSelect } from "../src/prompt.mjs";
 import * as ui from "../src/ui.mjs";
 
@@ -35,6 +36,7 @@ function helpText() {
       ["z0g skills", "List user/project skills (enable|disable <name>)"],
       ["z0g doctor", "Check your 0G setup (key, connectivity, model)"],
       ["z0g attest", "Show which 0G model wrote which change"],
+      ["z0g share", "Export a session to 0G Storage (--anchor for 0G Chain)"],
     ]],
     ["Media", [
       ['z0g image "<prompt>"', "Generate an image on 0G (z-image-turbo), saved as PNG"],
@@ -44,7 +46,8 @@ function helpText() {
       ["z0g serve --mcp", "Expose z0gcode's 0G tools as an MCP server"],
     ]],
     ["Options", [
-      ["--auto", "Allow shell + on-chain actions (run_bash, deploy, upload)"],
+      ["--auto", "Allow shell commands (run_bash)"],
+      ["--onchain", "Allow gas-spending on-chain actions (off by default)"],
       ["--continue", "Continue the saved session in this directory"],
       ["--model <id>", "Override the model (default " + CONFIG.model + ")"],
       ["--effort <l>", "Reasoning effort: low, medium, high (default: model's own)"],
@@ -79,8 +82,10 @@ const SLASH_COMMANDS = [
   ["/model", "Pick the active 0G model (saved to settings)"],
   ["/effort", "Set reasoning effort (low|medium|high|default)"],
   ["/subagents", "Enable or disable parallel subagents (on|off)"],
+  ["/onchain", "Enable or disable gas-spending on-chain actions (on|off)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/attest", "Show the provenance manifest"],
+  ["/share", "Export this session to 0G Storage (/share anchor to anchor on-chain)"],
   ["/plan", "Show the current task checklist"],
   ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
   ["/goal", "Run until the verify command passes"],
@@ -211,6 +216,7 @@ function parse(argv) {
     else if (a === "--mcp") flags.mcp = true;
     else if (a === "--json") flags.json = true;
     else if (a === "--num") flags.num = Number(argv[++i]);
+    else if (a === "--anchor") flags.anchor = true;
     else if (a === "--auto-verify") flags.autoVerify = true;
     else if (a === "--continue") flags.cont = true;
     else if (a === "--resume") flags.resume = true;
@@ -224,6 +230,8 @@ function parse(argv) {
     }
     else if (a === "--subagents") flags.subagents = boolOf(argv[++i]);
     else if (a === "--no-subagents") flags.subagents = false;
+    else if (a === "--onchain") flags.onchain = true;
+    else if (a === "--no-onchain") flags.onchain = false;
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
     else if (a === "--cwd") flags.cwd = argv[++i];
@@ -311,6 +319,53 @@ async function cmdTranscribe(file, flags) {
   console.log(ui.muted("  · " + meta.join(" · ") + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
 }
 
+// Export a session (transcript + provenance) to 0G Storage, optionally anchoring
+// the content hash on 0G Chain, for a verifiable, shareable snapshot.
+async function cmdShare(flags, sessionId) {
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  const id = sessionId || mostRecent(cwd);
+  if (!id) { console.log(ui.warn("No session to share. Run a task first.")); return; }
+  const onchainOn = flags.onchain !== undefined ? flags.onchain : CONFIG.onchain;
+  if (!onchainOn) { console.log(ui.warn("On-chain is off. Enable it with --onchain, /onchain on, or ZOG_ONCHAIN=on.")); return; }
+  if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (a funded 0G mainnet key) to share on 0G.")); return; }
+  const dir = sessionDir(cwd, id);
+  let sess = {};
+  try { sess = JSON.parse(readFileSync(path.join(dir, "session.json"), "utf8")); } catch {}
+  let provenance = null;
+  try { provenance = JSON.parse(readFileSync(path.join(dir, "provenance.json"), "utf8")); } catch {}
+  const bundle = {
+    tool: "z0gcode",
+    ts: new Date().toISOString(),
+    session: { id: sess.id || id, title: sess.title || "", created: sess.created, messages: sess.messages || [] },
+    provenance,
+  };
+  const bundlePath = path.join(dir, "share-bundle.json");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
+
+  console.log(ui.section("Share session", bundle.session.title || id));
+  ui.info("uploading the session to 0G Storage...");
+  let root, storageTx;
+  try {
+    ({ rootHash: root, txHash: storageTx } = await uploadFileToStorage(bundlePath));
+  } catch (e) { console.log(ui.err("  upload failed: " + e.message)); return; }
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " 0G Storage root " + ui.strong(root));
+  console.log("  " + ui.muted("    tx " + storageTx + "  ·  https://chainscan.0g.ai/tx/" + storageTx));
+  const record = { id, root, storageTx, ts: bundle.ts };
+  if (flags.anchor) {
+    ui.info("anchoring the hash on 0G Chain...");
+    try {
+      const a = await anchorOnChain(root);
+      record.anchorTx = a.txHash; record.block = a.block;
+      console.log("  " + ui.ok(ui.GLYPH.ok) + " anchored on 0G Chain " + ui.strong(a.txHash));
+      console.log("  " + ui.muted("    block " + a.block + "  ·  https://chainscan.0g.ai/tx/" + a.txHash));
+    } catch (e) { console.log(ui.err("  anchor failed: " + e.message)); }
+  }
+  writeFileSync(path.join(dir, "share.json"), JSON.stringify(record, null, 2));
+  console.log("\n  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Verifiable session snapshot on 0G. Saved to .z0g/sessions/" + id + "/share.json"));
+}
+
 async function cmdDoctor() {
   const warnGlyph = ui.uiTTY ? "▲" : "!";
   const row = (state, label, value) => {
@@ -358,6 +413,8 @@ async function cmdDoctor() {
   row("open", "Limits", ui.muted(CONFIG.maxSteps + " steps · " + CONFIG.maxTokens + " max tokens · temp " + CONFIG.temperature));
   row("open", "Effort", ui.muted(CONFIG.effort || "unset (model default)"));
   row("open", "Subagents", ui.muted(CONFIG.subagents ? "on · up to " + CONFIG.maxParallel + " parallel" : "off"));
+  row(CONFIG.onchain ? (process.env.ZOG_WALLET_KEY ? "ok" : "warn") : "open", "On-chain",
+    CONFIG.onchain ? (process.env.ZOG_WALLET_KEY ? ui.muted("on · wallet set") : ui.warn("on · set ZOG_WALLET_KEY")) : ui.muted("off (gas-spending, opt-in)"));
 
   console.log("");
   if (models && def) {
@@ -447,13 +504,13 @@ async function runTask(task, flags) {
     // Auto-verify: a normal run becomes self-correcting when a verify command is present.
     const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
     if (verifyCmd) {
-      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, verifyCmd, maxIters: 3, history: opened.history });
+      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, verifyCmd, maxIters: 3, history: opened.history });
       return;
     }
     const client = makeClient();
     const mcp = await loadMcp(cwd);
     if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, history: opened.history, mcp });
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, history: opened.history, mcp });
     if (res?.messages) await saveMessages(cwd, sessionId, res.messages);
     await mcp?.close();
   } finally {
@@ -476,7 +533,7 @@ async function cmdGoal(objective, flags) {
   try {
     const verifyCmd = flags.verify || detectVerifyCmd(cwd);
     if (!flags.auto) ui.info("tip: run goal with --auto so the agent can run and verify its own work.");
-    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, verifyCmd, maxIters: 3, history: opened.history });
+    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, verifyCmd, maxIters: 3, history: opened.history });
   } finally {
     process.removeListener("SIGINT", onSig);
     pruneEmptySync(cwd, opened.id);
@@ -494,6 +551,7 @@ async function repl(flags) {
   let model = flags.model;
   let effort = flags.effort;
   let subagents = flags.subagents;
+  let onchain = flags.onchain;
   let sessTokens = { in: 0, out: 0 };
   let priceMap = null;
   fetchModels(client).then((all) => { priceMap = Object.fromEntries(all.map((m) => [m.id, m])); }).catch(() => {});
@@ -514,6 +572,7 @@ async function repl(flags) {
   let pendingModels = null; // when set, the next line is a /model selection
   const activeModel = () => model || CONFIG.model;
   const activeEffort = () => (effort === "" ? null : (effort || CONFIG.effort));
+  const activeOnchain = () => (onchain !== undefined ? onchain : CONFIG.onchain);
   const costOf = () => {
     const m = priceMap && priceMap[activeModel()];
     if (!m || m.inPerM == null) return null;
@@ -606,6 +665,17 @@ async function repl(flags) {
           console.log(ui.warn("usage: /subagents on|off"));
         }
       }
+      else if (cmd === "onchain") {
+        const a = arg.toLowerCase().trim();
+        if (a === "on" || a === "off") {
+          onchain = a === "on"; saveSetting("onchain", onchain);
+          ui.info("on-chain " + (onchain ? "on" : "off") + " (saved)" + (onchain && !process.env.ZOG_WALLET_KEY ? "  ·  set ZOG_WALLET_KEY to a funded key" : ""));
+        } else if (!a) {
+          ui.info("on-chain: " + (activeOnchain() ? "on" : "off") + "  ·  gas-spending (Storage/Chain/anchor)  ·  usage: /onchain on|off");
+        } else {
+          console.log(ui.warn("usage: /onchain on|off"));
+        }
+      }
       else if (cmd === "skills") cmdSkills(cwd, arg);
       else if (cmd === "chats") {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
@@ -651,17 +721,21 @@ async function repl(flags) {
         else ui.info("usage: /rename <title>");
       }
       else if (cmd === "attest") await printAttest(sessionDirPath);
+      else if (cmd === "share") {
+        if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
+        await cmdShare({ ...flags, anchor: /anchor/.test(arg) || flags.anchor, onchain: activeOnchain() }, sessionId);
+      }
       else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
       } else ui.info("unknown command; /help for the list");
       showPrompt();
       continue;
     }
 
-    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, history, mcp });
+    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
     history = res.messages;
     if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
@@ -682,6 +756,7 @@ async function main() {
     if (sub === "models") return await cmdModels(flags);
     if (sub === "image") return await cmdImage(positional[1], positional[2], flags);
     if (sub === "transcribe") return await cmdTranscribe(positional[1], flags);
+    if (sub === "share") return await cmdShare(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
     if (sub === "attest") {

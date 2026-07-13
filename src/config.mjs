@@ -57,6 +57,14 @@ export const CONFIG = {
   // Media models on the 0G Router (image generation, transcription).
   imageModel: process.env.ZOG_IMAGE_MODEL || "z-image-turbo",
   transcribeModel: process.env.ZOG_TRANSCRIBE_MODEL || "whisper-large-v3",
+
+  // On-chain actions (0G Storage upload, 0G Chain deploy, session anchor) spend
+  // gas, so they are OFF by default. env > settings > off.
+  onchain: (() => {
+    const e = boolOf(process.env.ZOG_ONCHAIN);
+    if (e !== undefined) return e;
+    return typeof settings.onchain === "boolean" ? settings.onchain : false;
+  })(),
 };
 
 export function modelChain(preferred) {
