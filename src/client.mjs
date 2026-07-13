@@ -8,7 +8,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function makeClient() {
   if (!CONFIG.apiKey) {
-    throw new Error("Missing ZOG_API_KEY. Get a 0G Router key at https://pc.0g.ai and export ZOG_API_KEY.");
+    throw new Error("Missing ZOG_API_KEY. Get a 0G Router key at https://pc.0g.ai, then export it, put it in a project .env, or in ~/.z0gcode/.env to use it from anywhere.");
   }
   return new OpenAI({ baseURL: CONFIG.baseURL, apiKey: CONFIG.apiKey });
 }
