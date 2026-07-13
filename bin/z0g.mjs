@@ -991,7 +991,12 @@ async function repl(flags) {
 async function main() {
   const { flags, positional } = parse(process.argv.slice(2));
   if (flags.help) { console.log(helpText()); return; }
-  if (flags.version) { console.log("z0gcode 0.2.0"); return; }
+  if (flags.version) {
+    let v = "";
+    try { v = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version; } catch {}
+    console.log("z0gcode " + (v || "0.2.0"));
+    return;
+  }
 
   const sub = positional[0];
   try {

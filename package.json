@@ -1,13 +1,36 @@
 {
   "name": "z0gcode",
   "version": "0.2.0",
-  "description": "A terminal coding agent whose brain runs on 0G Compute.",
+  "description": "A terminal coding agent whose brain runs on 0G Compute: private, verifiable AI with on-chain provenance.",
   "type": "module",
   "bin": {
     "z0g": "bin/z0g.mjs"
   },
   "license": "MIT",
   "author": "Andrei Coman",
+  "homepage": "https://github.com/mr-reb00t/z0gcode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mr-reb00t/z0gcode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mr-reb00t/z0gcode/issues"
+  },
+  "keywords": [
+    "coding-agent",
+    "ai",
+    "agent",
+    "cli",
+    "terminal",
+    "0g",
+    "0g-compute",
+    "tee",
+    "verifiable-inference",
+    "provenance",
+    "openai-compatible",
+    "mcp",
+    "developer-tools"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -15,13 +38,16 @@
     "bin",
     "src",
     "skills",
-    "contracts/Z0gSession.json"
+    "contracts/Z0gSession.json",
+    "contracts/Z0gSession.sol",
+    ".env.example"
   ],
   "scripts": {
     "start": "node bin/z0g.mjs",
     "test": "node --test test/*.test.mjs",
     "models": "node scripts/verify-router.mjs --list",
-    "verify": "node scripts/verify-router.mjs 0gm-1.0-35b-a3b deepseek-v4-pro glm-5.2 kimi-k2.7-code"
+    "verify": "node scripts/verify-router.mjs 0gm-1.0-35b-a3b deepseek-v4-pro glm-5.2 kimi-k2.7-code",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -29,6 +55,6 @@
   },
   "optionalDependencies": {
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
-    "ethers": "^6.17.0"
+    "ethers": "6.13.1"
   }
 }

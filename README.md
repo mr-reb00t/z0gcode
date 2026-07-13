@@ -38,19 +38,23 @@ The agent loop, tools, and CLI are original and dependency-light (one runtime de
 ## Quickstart
 
 ```bash
-git clone https://github.com/mr-reb00t/z0gcode
-cd z0gcode
-npm install
-npm link                    # optional: puts `z0g` on your PATH
+npm install -g z0gcode                 # or: npm i -g z0gcode --omit=optional (lean core, no on-chain deps)
 export ZOG_API_KEY=<your 0G Router key from https://pc.0g.ai>
 # or put ZOG_API_KEY=... in a project .env (any parent dir works too), or in
 # ~/.z0gcode/.env to use `z0g` from anywhere (see .env.example for all options)
 
-z0g doctor                  # check key, connectivity, model
+z0g doctor                             # check key, connectivity, model
 z0g "add a /health endpoint to server.js and test it"
 ```
 
-No `npm link`? Run it with `node bin/z0g.mjs`. An `npm i -g z0gcode` package is on the way.
+The optional on-chain features (`share`, `mint`, `deploy`, `upload`) pull `ethers` and the 0G Storage SDK; `--omit=optional` skips them for a lean, one-runtime-dependency install and adds them later with `npm i -g ethers @0gfoundation/0g-storage-ts-sdk`.
+
+**From source:**
+
+```bash
+git clone https://github.com/mr-reb00t/z0gcode && cd z0gcode
+npm install && npm link                # or run directly with: node bin/z0g.mjs
+```
 
 ## Usage
 
