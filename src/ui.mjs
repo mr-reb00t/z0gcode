@@ -287,6 +287,72 @@ function mdBlockLine(raw) {
   return mdInline(raw);
 }
 
+// ---- lightweight, dependency-free syntax highlighting for code blocks -----
+const KW_JS = "const let var function return if else for while do switch case break continue default new delete typeof instanceof void yield await async import export from as class extends super this try catch finally throw of in null true false undefined static get set";
+const KW_TS = KW_JS + " interface type enum implements public private protected readonly namespace keyof declare abstract override";
+const KW_PY = "def return if elif else for while import from as class try except finally raise with lambda pass break continue global nonlocal yield async await and or not in is None True False self print len range";
+const KW_SOL = "pragma solidity contract function returns return public private external internal view pure payable memory storage calldata mapping address uint uint256 int int256 bool string bytes bytes32 struct enum event emit modifier require revert assert constructor if else for while new import using library interface is override virtual constant immutable indexed msg block tx now this abstract receive fallback";
+const KW_SH = "if then else elif fi for while do done case esac function return in export local echo cd source set unset read declare";
+const KW_GO = "package import func var const type struct interface map chan go defer return if else for range switch case break continue default nil true false string int int64 error bool";
+const KW_RS = "fn let mut const struct enum impl trait pub use mod match if else for while loop return self Self where async await move ref dyn Box Vec Option Result Some None Ok Err true false";
+const KW_JSON = "true false null";
+const toSet = (s) => new Set(s.split(/\s+/).filter(Boolean));
+const KEYWORDS = {
+  js: toSet(KW_JS), jsx: toSet(KW_JS), mjs: toSet(KW_JS), cjs: toSet(KW_JS),
+  ts: toSet(KW_TS), tsx: toSet(KW_TS),
+  py: toSet(KW_PY), python: toSet(KW_PY),
+  sol: toSet(KW_SOL), solidity: toSet(KW_SOL),
+  sh: toSet(KW_SH), bash: toSet(KW_SH), shell: toSet(KW_SH), zsh: toSet(KW_SH),
+  go: toSet(KW_GO), golang: toSet(KW_GO),
+  rs: toSet(KW_RS), rust: toSet(KW_RS),
+  json: toSet(KW_JSON),
+};
+const LINE_COMMENT = {
+  js: "//", jsx: "//", mjs: "//", cjs: "//", ts: "//", tsx: "//",
+  sol: "//", solidity: "//", go: "//", rs: "//", rust: "//", c: "//", cpp: "//", java: "//",
+  py: "#", python: "#", sh: "#", bash: "#", shell: "#", zsh: "#", yaml: "#", yml: "#", toml: "#", rb: "#", ruby: "#",
+};
+const CLIKE = new Set(["js", "jsx", "mjs", "cjs", "ts", "tsx", "sol", "solidity", "go", "rs", "rust", "c", "cpp", "java"]);
+const langKey = (lang) => String(lang || "").toLowerCase().replace(/^\./, "").trim();
+
+// Highlight one line of code (no cross-line state, so it is safe for streaming).
+export function highlightLine(line, lang) {
+  if (!useColor) return line;
+  const key = langKey(lang);
+  const kw = KEYWORDS[key];
+  const lc = LINE_COMMENT[key];
+  const clike = CLIKE.has(key);
+  let out = "";
+  const n = line.length;
+  let i = 0;
+  while (i < n) {
+    const ch = line[i];
+    if (lc && line.startsWith(lc, i)) { out += muted(line.slice(i)); break; }
+    if (clike && line.startsWith("/*", i)) {
+      const end = line.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      out += muted(line.slice(i, stop)); i = stop; continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      let j = i + 1;
+      while (j < n && line[j] !== ch) { if (line[j] === "\\") j++; j++; }
+      out += ok(line.slice(i, Math.min(j + 1, n))); i = j + 1; continue;
+    }
+    if (/[0-9]/.test(ch) && (i === 0 || /[^A-Za-z0-9_$]/.test(line[i - 1]))) {
+      let j = i; while (j < n && /[0-9a-fA-FxXoObB._]/.test(line[j])) j++;
+      out += warn(line.slice(i, j)); i = j; continue;
+    }
+    if (/[A-Za-z_$@]/.test(ch)) {
+      let j = i; while (j < n && /[A-Za-z0-9_$]/.test(line[j])) j++;
+      const word = line.slice(i, j);
+      out += kw && kw.has(word) ? accent(word) : word;
+      i = j; continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
+
 function renderMdTable(rows) {
   const split = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
   const all = rows.map(split);
@@ -320,6 +386,7 @@ function renderMdTable(rows) {
 function makeMdRenderer(write) {
   let buffer = "";
   let inFence = false;
+  let fenceLang = "";
   let table = [];
   const flushTable = () => {
     if (table.length) {
@@ -333,14 +400,16 @@ function makeMdRenderer(write) {
       if (!inFence) {
         inFence = true;
         const info = raw.replace(/^\s*```/, "").trim();
+        fenceLang = info.split(/\s+/)[0] || "";
         write(muted("  " + (info || "code")) + "\n");
       } else {
         inFence = false;
+        fenceLang = "";
       }
       return;
     }
     if (inFence) {
-      write("  " + muted("│ ") + mdCyan(raw) + "\n");
+      write("  " + muted("│ ") + highlightLine(raw, fenceLang) + "\n");
       return;
     }
     if (/^\s*\|.*\|/.test(raw)) {

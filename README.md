@@ -84,7 +84,7 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 **The agent**
 - Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by `--auto`), `update_plan`, and `read_skill`.
 - Colored diffs for every change, an inference HUD (tokens, answering model, `0G Compute (TEE)`), and a visible planning checklist on multi-step tasks.
-- Streaming answers rendered as terminal markdown (bold, headings, lists, tables, inline code, code blocks); piped output stays raw and greppable.
+- Streaming answers rendered as terminal markdown (bold, headings, lists, tables, inline code, and syntax-highlighted code blocks for JS/TS, Python, Solidity, Go, Rust, shell, JSON, and more); piped output stays raw and greppable.
 - Multiple chats per project, each isolating its own history, plan, and provenance under `.z0g/sessions/`. On open, an arrow-key picker (with search, rename, delete) resumes a chat; `--continue` resumes the most recent, `--resume` shows the picker, `/chats` switches mid-session. Plus a goal loop (`z0g goal` re-runs until a verify command passes) and auto-verify.
 - **Project context**: `AGENTS.md` (and `.z0g/context.md`) are auto-loaded into the agent's system prompt on every run, so it follows your conventions and uses your real build/test/run commands. `z0g init` (or `/init`) analyzes the repo and writes an accurate `AGENTS.md` for you.
 - **Checkpoints and undo**: every file edit is logged with its before/after content per turn, so `z0g undo` (or `/undo`) reverts the last turn's changes (restoring files, deleting ones it created); `z0g checkpoints` lists what you can step back through.
