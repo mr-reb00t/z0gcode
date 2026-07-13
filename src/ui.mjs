@@ -220,8 +220,8 @@ export function toolResult(success, summary) {
 }
 
 // Subagent fan-out status (compact; one line per subagent as it finishes).
-export function subagentsStart(n) {
-  console.log("  " + accent(GLYPH.chevron) + " " + strong("spawn_subagents") + " " + muted(n + " parallel, read-only"));
+export function subagentsStart(n, mode) {
+  console.log("  " + accent(GLYPH.chevron) + " " + strong(mode ? "spawn_write_subagents" : "spawn_subagents") + " " + muted(n + " parallel, " + (mode || "read-only")));
 }
 export function subagentOne(r) {
   const mark = r.ok ? ok(GLYPH.ok) : err(GLYPH.no);

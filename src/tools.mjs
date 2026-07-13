@@ -186,6 +186,31 @@ export const TOOL_DEFS = [
   {
     type: "function",
     function: {
+      name: "spawn_write_subagents",
+      description: "Run several INDEPENDENT subtasks that WRITE code in parallel, each in its own isolated git worktree, then merge each one's diff back into the working tree. Use it when a change cleanly splits into parts that touch DIFFERENT files (e.g. implement three separate modules, add tests across several files, apply the same refactor to independent files). Each subagent can read, write, edit, and run shell inside its own worktree. Non-overlapping edits merge automatically; subtasks that touch the same file will conflict and be skipped, so keep the file sets disjoint. Requires a git repository. Keep it to a handful of focused subtasks.",
+      parameters: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            description: "The independent write subtasks to run in parallel. Give each a disjoint set of files to touch.",
+            items: {
+              type: "object",
+              properties: {
+                prompt: { type: "string", description: "The self-contained subtask instruction, including which file(s) to create or edit." },
+                label: { type: "string", description: "Short label for display." },
+              },
+              required: ["prompt"],
+            },
+          },
+        },
+        required: ["tasks"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "generate_image",
       description: "Generate an image with 0G's image model (z-image-turbo) and save it as a PNG in the working directory. Use for icons, placeholder assets, og-images, or a logo. Costs a small fee per image; at most 2 per call.",
       parameters: {

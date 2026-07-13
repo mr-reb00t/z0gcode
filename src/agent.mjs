@@ -9,6 +9,7 @@ import { skillsPromptBlock } from "./user-skills.mjs";
 import { contextPromptBlock } from "./context.mjs";
 import { makeProvenance } from "./provenance.mjs";
 import { recordCheckpoint } from "./checkpoints.mjs";
+import { isGitRepo, addWorktree, collectPatch, removeWorktree, applyPatch } from "./worktree.mjs";
 import * as ui from "./ui.mjs";
 
 function systemPrompt(cwd) {
@@ -68,7 +69,9 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
   // it is a subagent (no recursion) or the toggle is off. Drop on-chain tools when
   // the on-chain toggle is off so the agent never proposes a gas-spending action.
   let baseTools = toolNames ? TOOL_DEFS.filter((t) => toolNames.includes(t.function.name)) : TOOL_DEFS;
-  if (isSubagent || !subOn) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents");
+  if (isSubagent || !subOn) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents" && t.function.name !== "spawn_write_subagents");
+  // Write subagents edit files and run shell in worktrees, so require --auto.
+  if (!allowBash) baseTools = baseTools.filter((t) => t.function.name !== "spawn_write_subagents");
   if (!onchainOn) baseTools = baseTools.filter((t) => t.function.name !== "upload_0g_storage" && t.function.name !== "deploy_0g_chain");
   const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;
   const models = modelChain(preferredModel);
@@ -197,6 +200,53 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
         continue;
       }
 
+      // Parallel WRITE subagents: each edits in an isolated git worktree, then
+      // its diff is merged back into the main tree.
+      if (name === "spawn_write_subagents") {
+        if (isSubagent) {
+          if (!q) { ui.toolCall(name, ""); ui.toolResult(false, "subagents cannot spawn subagents"); }
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: a subagent cannot spawn subagents." });
+          continue;
+        }
+        const subtasks = (Array.isArray(args.tasks) ? args.tasks.filter((t) => t && typeof t.prompt === "string" && t.prompt.trim()) : []).slice(0, 8);
+        if (!subtasks.length) {
+          if (!q) { ui.toolCall(name, ""); ui.toolResult(false, "no tasks"); }
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: provide tasks: [{ prompt }]." });
+          continue;
+        }
+        if (!q) ui.subagentsStart(subtasks.length, "write · isolated git worktrees");
+        const out = await runWriteSubagents({
+          client, tasks: subtasks, cwd, sessionDir: provDir,
+          preferredModel, preferredEffort,
+          onOne: q ? null : (r) => ui.subagentOne(r),
+        });
+        if (!out.ok) {
+          if (!q) ui.toolResult(false, out.error);
+          messages.push({ role: "tool", tool_call_id: tc.id, content: "ERROR: " + out.error });
+          continue;
+        }
+        const wr = out.results;
+        // Record checkpoints for merged edits so `z0g undo` reverts them too.
+        for (const r of wr) {
+          for (const ch of (r.changes || [])) {
+            await recordCheckpoint(provDir, {
+              runId, ts: new Date().toISOString(),
+              task: typeof task === "string" ? task.slice(0, 80) : "",
+              path: ch.path, before: ch.before, after: ch.after,
+              created: !!ch.created, tool: "spawn_write_subagents", model: activeModel,
+            });
+          }
+        }
+        if (!q) ui.subagentsSummary(wr);
+        const PER = 6000, TOTAL = 40000;
+        const clip = (s, n) => (s && s.length > n ? s.slice(0, n) + "\n... [truncated]" : (s || ""));
+        const applied = wr.filter((r) => r.applied);
+        let combined = wr.map((r) => `## ${r.label} (${r.ok ? "ok" : "failed"}${r.applied ? ", merged" : ", " + (r.applyReason || "not merged")})\nfiles: ${r.files.join(", ") || "none"}\n${clip(r.summary, PER)}`).join("\n\n");
+        if (combined.length > TOTAL) combined = combined.slice(0, TOTAL) + "\n... [more output truncated; see .z0g/sessions/<id>/subagents/]";
+        messages.push({ role: "tool", tool_call_id: tc.id, content: `Write-subagent results (${wr.length} agents, ${applied.length} merged into the working tree):\n\n${combined}` });
+        continue;
+      }
+
       if (!q) ui.toolCall(name, argSummary(name, args));
       const res = mcp && mcp.isMcp(name) ? await mcp.call(name, args) : await execute(name, args);
       if (!q) ui.toolResult(res.ok, res.summary);
@@ -292,4 +342,92 @@ export async function runSubagents({ client, tasks, cwd, sessionDir, preferredMo
   for (let w = 0; w < Math.min(cap, tasks.length); w++) workers.push(pool());
   await Promise.all(workers);
   return results;
+}
+
+// Run independent WRITE subtasks in parallel, each in its own git worktree, then
+// apply each worktree's diff back to the main tree (non-overlapping edits merge;
+// overlapping files are reported and skipped). Returns { ok, error?, results }.
+// Each result: { label, ok, summary, files, applied, applyReason, changes, tokens }.
+const WRITE_SUBAGENT_TOOLS = ["read_file", "search_files", "list_dir", "read_skill", "update_plan", "write_file", "edit_file", "run_bash"];
+
+export async function runWriteSubagents({ client, tasks, cwd, sessionDir, preferredModel, preferredEffort, onOne }) {
+  if (!(await isGitRepo(cwd))) {
+    return { ok: false, error: "Write subagents require a git repository. Run `git init` and make a commit first." };
+  }
+  const rootDir = sessionDir ? path.join(sessionDir, "subagents") : null;
+  let base = 0;
+  if (rootDir) {
+    try { await fs.mkdir(rootDir, { recursive: true }); base = (await fs.readdir(rootDir)).filter((n) => /^\d+$/.test(n)).length; } catch {}
+  }
+  const stamp = Date.now().toString(36);
+
+  // 1) Create a worktree per subtask (sequential: git index is single-writer).
+  const wts = new Array(tasks.length);
+  for (let i = 0; i < tasks.length; i++) {
+    try { wts[i] = await addWorktree(cwd, `${stamp}-${base + i + 1}`); }
+    catch (e) { wts[i] = { error: e.message }; }
+  }
+
+  // 2) Run each subagent in its worktree, in parallel (pooled), and collect diffs.
+  const cap = Math.max(1, CONFIG.maxParallel);
+  const results = new Array(tasks.length);
+  let next = 0;
+  const runOne = async (i) => {
+    const t = tasks[i];
+    const label = (t.label && String(t.label).trim()) || `write-subagent ${i + 1}`;
+    const wt = wts[i];
+    if (!wt || wt.error) {
+      results[i] = { label, ok: false, summary: "worktree failed: " + (wt?.error || "unknown"), files: [], patch: "", tokens: 0 };
+      if (onOne) onOne(results[i]); return;
+    }
+    const subDir = rootDir ? path.join(rootDir, String(base + i + 1)) : undefined;
+    let res = null, patch = "", files = [];
+    try {
+      res = await runAgent({
+        client, task: t.prompt, cwd: wt.wtPath, sessionDir: subDir,
+        allowBash: true, preferredModel, preferredEffort,
+        quiet: true, toolNames: WRITE_SUBAGENT_TOOLS, isSubagent: true,
+      });
+      ({ patch, files } = await collectPatch(wt.wtPath));
+      results[i] = { label, ok: !!res.ok, summary: res.finalText || "(no summary)", files, patch, tokens: res.usageTotal?.total || 0 };
+    } catch (e) {
+      results[i] = { label, ok: false, summary: "error: " + e.message, files: [], patch: "", tokens: 0 };
+    }
+    try {
+      if (subDir) {
+        await fs.mkdir(subDir, { recursive: true });
+        await fs.writeFile(path.join(subDir, "transcript.json"), JSON.stringify({ task: t, result: { ...results[i], patch: undefined }, messages: res?.messages || [] }, null, 2), "utf8");
+      }
+    } catch {}
+    try { await removeWorktree(cwd, wt.wtPath, wt.branch); } catch {}
+    if (onOne) onOne(results[i]);
+  };
+  const pool = async () => { while (next < tasks.length) { const i = next++; await runOne(i); } };
+  const workers = [];
+  for (let w = 0; w < Math.min(cap, tasks.length); w++) workers.push(pool());
+  await Promise.all(workers);
+
+  // 3) Apply each diff to the main tree in order, capturing before/after so the
+  // parent can checkpoint them (keeps `z0g undo` working for merged writes).
+  for (const r of results) {
+    if (!r.patch || !r.patch.trim()) { r.applied = false; r.applyReason = "no changes"; r.changes = []; delete r.patch; continue; }
+    const pre = [];
+    for (const f of r.files) {
+      let before = "", existed = true;
+      try { before = await fs.readFile(path.join(cwd, f), "utf8"); } catch { before = ""; existed = false; }
+      pre.push({ path: f, before, existed });
+    }
+    const a = await applyPatch(cwd, r.patch);
+    r.applied = a.ok; r.applyReason = a.reason;
+    r.changes = [];
+    if (a.ok) {
+      for (const p of pre) {
+        let after = "";
+        try { after = await fs.readFile(path.join(cwd, p.path), "utf8"); } catch { after = ""; }
+        if (after !== p.before) r.changes.push({ path: p.path, before: p.before, after, created: !p.existed && after !== "" });
+      }
+    }
+    delete r.patch;
+  }
+  return { ok: true, results };
 }
