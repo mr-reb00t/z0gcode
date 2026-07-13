@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/brain-0G_Compute_TEE-A78BFF" alt="0G Compute">
   <img src="https://img.shields.io/badge/runtime_deps-1-6B7080" alt="1 runtime dependency">
   <img src="https://img.shields.io/badge/ETHGlobal-Lisbon-A78BFF" alt="ETHGlobal Lisbon">
+  <img src="https://github.com/mr-reb00t/z0gcode/actions/workflows/ci.yml/badge.svg" alt="CI">
 </p>
 
 Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infrastructure & Tooling).
@@ -122,6 +123,17 @@ Next:
 - INFT mint (ERC-7857) for the verifiable session snapshot.
 - Full TEE-quote verification of the provenance manifest (not just model + response id).
 - Publish `z0gcode` to npm; a shareable starter pack of user skills.
+
+## Development
+
+Offline unit tests run on Node's built-in runner and cover the checkpoints,
+context, custom-commands, config, syntax-highlighting, and CLI surface:
+
+```bash
+npm test
+```
+
+CI runs the suite plus a syntax check on Node 18, 20, and 22 (see [.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Docs
 

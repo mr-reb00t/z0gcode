@@ -315,42 +315,52 @@ const LINE_COMMENT = {
 const CLIKE = new Set(["js", "jsx", "mjs", "cjs", "ts", "tsx", "sol", "solidity", "go", "rs", "rust", "c", "cpp", "java"]);
 const langKey = (lang) => String(lang || "").toLowerCase().replace(/^\./, "").trim();
 
-// Highlight one line of code (no cross-line state, so it is safe for streaming).
-export function highlightLine(line, lang) {
-  if (!useColor) return line;
+// Tokenize one line of code into [{ t, v }] spans (t: kw|str|num|com|text).
+// Pure and color-independent (no cross-line state, so it is safe for streaming).
+export function tokenizeCode(line, lang) {
   const key = langKey(lang);
   const kw = KEYWORDS[key];
   const lc = LINE_COMMENT[key];
   const clike = CLIKE.has(key);
-  let out = "";
+  const toks = [];
+  const push = (t, v) => { if (v) toks.push({ t, v }); };
   const n = line.length;
-  let i = 0;
+  let i = 0, text = "";
+  const flush = () => { if (text) { push("text", text); text = ""; } };
   while (i < n) {
     const ch = line[i];
-    if (lc && line.startsWith(lc, i)) { out += muted(line.slice(i)); break; }
+    if (lc && line.startsWith(lc, i)) { flush(); push("com", line.slice(i)); i = n; break; }
     if (clike && line.startsWith("/*", i)) {
       const end = line.indexOf("*/", i + 2);
       const stop = end === -1 ? n : end + 2;
-      out += muted(line.slice(i, stop)); i = stop; continue;
+      flush(); push("com", line.slice(i, stop)); i = stop; continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       let j = i + 1;
       while (j < n && line[j] !== ch) { if (line[j] === "\\") j++; j++; }
-      out += ok(line.slice(i, Math.min(j + 1, n))); i = j + 1; continue;
+      flush(); push("str", line.slice(i, Math.min(j + 1, n))); i = j + 1; continue;
     }
     if (/[0-9]/.test(ch) && (i === 0 || /[^A-Za-z0-9_$]/.test(line[i - 1]))) {
       let j = i; while (j < n && /[0-9a-fA-FxXoObB._]/.test(line[j])) j++;
-      out += warn(line.slice(i, j)); i = j; continue;
+      flush(); push("num", line.slice(i, j)); i = j; continue;
     }
     if (/[A-Za-z_$@]/.test(ch)) {
       let j = i; while (j < n && /[A-Za-z0-9_$]/.test(line[j])) j++;
       const word = line.slice(i, j);
-      out += kw && kw.has(word) ? accent(word) : word;
+      if (kw && kw.has(word)) { flush(); push("kw", word); } else text += word;
       i = j; continue;
     }
-    out += ch; i++;
+    text += ch; i++;
   }
-  return out;
+  flush();
+  return toks;
+}
+
+// Highlight one line of code for a TTY. Piped output stays raw.
+export function highlightLine(line, lang) {
+  if (!useColor) return line;
+  const paint = { kw: accent, str: ok, num: warn, com: muted, text: (s) => s };
+  return tokenizeCode(line, lang).map((tk) => paint[tk.t](tk.v)).join("");
 }
 
 function renderMdTable(rows) {
