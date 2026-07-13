@@ -10,6 +10,7 @@ import { makeClient } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
 import { INIT_TASK } from "../src/context.mjs";
 import { undoLastTurn, readCheckpointLog, activeTurns } from "../src/checkpoints.mjs";
+import { loadCustomCommands, expandTemplate, loadHooks, runHooks, hasHooks } from "../src/commands.mjs";
 import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
 import {
@@ -89,6 +90,7 @@ const SLASH_COMMANDS = [
   ["/subagents", "Enable or disable parallel subagents (on|off)"],
   ["/onchain", "Enable or disable gas-spending on-chain actions (on|off)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
+  ["/commands", "List project custom commands (.z0g/commands/*.md)"],
   ["/attest", "Show the provenance manifest"],
   ["/undo", "Revert the file edits from the last turn"],
   ["/checkpoints", "List the turns you can undo"],
@@ -110,10 +112,12 @@ function slashMenu(filter) {
   return "  " + ui.muted("Commands") + "\n" + list;
 }
 
+// Project-local custom command names (e.g. /review), set by repl() at startup.
+let extraSlash = [];
 // Tab-completion for slash commands: "/" + Tab lists all, "/mo" + Tab -> "/model".
 function slashCompleter(line) {
   if (!line.startsWith("/")) return [[], line];
-  const names = SLASH_COMMANDS.map(([c]) => c);
+  const names = [...SLASH_COMMANDS.map(([c]) => c), ...extraSlash];
   const hits = names.filter((c) => c.startsWith(line));
   return [hits.length ? hits : names, line];
 }
@@ -650,7 +654,22 @@ async function repl(flags) {
     console.log(ui.sessionBar({ model: activeModel(), effort: activeEffort(), inTok: sessTokens.in, outTok: sessTokens.out, cost: costOf() }));
     rl.prompt();
   };
+  const customCmds = loadCustomCommands(cwd);
+  const customMap = Object.fromEntries(customCmds.map((c) => [c.name, c]));
+  extraSlash = customCmds.map((c) => "/" + c.name);
+  const hooks = loadHooks(cwd);
+  // Run one agent turn: hooks, the agent, then persist history + tokens.
+  const runTurn = async (task) => {
+    await runHooks(cwd, "preRun", hooks, flags.auto, task);
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
+    history = res.messages;
+    if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
+    await saveMessages(cwd, sessionId, history);
+    await runHooks(cwd, "postRun", hooks, flags.auto, task);
+  };
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
+  if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
+  if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
   showPrompt();
   for await (const line of rl) {
     const input = line.trim();
@@ -797,18 +816,24 @@ async function repl(flags) {
       else if (cmd === "checkpoints") await cmdCheckpoints(flags, sessionId);
       else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
+      else if (cmd === "commands") {
+        if (!customCmds.length) ui.info("no custom commands. Add .z0g/commands/<name>.md to create /<name>");
+        else { console.log(ui.section("Custom commands", customCmds.length + " loaded")); for (const c of customCmds) console.log("  " + ui.accent("/" + c.name) + "  " + ui.muted(c.description)); }
+      }
       else if (cmd === "goal") {
         await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
-      } else ui.info("unknown command; /help for the list");
+      }
+      else if (customMap[cmd]) {
+        const task = expandTemplate(customMap[cmd].template, arg);
+        await runTurn(task);
+      }
+      else ui.info("unknown command; /help for the list");
       showPrompt();
       continue;
     }
 
-    const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
-    history = res.messages;
-    if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
-    await saveMessages(cwd, sessionId, history);
+    await runTurn(input);
     showPrompt();
   }
   rl.close();
