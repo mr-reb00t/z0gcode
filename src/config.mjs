@@ -53,6 +53,10 @@ export const CONFIG = {
     if (e !== undefined) return e;
     return typeof settings.subagents === "boolean" ? settings.subagents : true;
   })(),
+
+  // Media models on the 0G Router (image generation, transcription).
+  imageModel: process.env.ZOG_IMAGE_MODEL || "z-image-turbo",
+  transcribeModel: process.env.ZOG_TRANSCRIBE_MODEL || "whisper-large-v3",
 };
 
 export function modelChain(preferred) {

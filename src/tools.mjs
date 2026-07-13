@@ -1,10 +1,12 @@
 // Tools the agent can call. File ops run always; bash and on-chain ops require --auto.
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { listSkills, readSkill } from "./skills.mjs";
 import { discoverSkills, readUserSkill } from "./user-skills.mjs";
 import { savePlan } from "./plan.mjs";
+import { makeClient } from "./client.mjs";
+import { generateImage, transcribeAudio } from "./media.mjs";
 
 const MAX_READ = 200_000; // chars
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", ".z0g", ".next", "build", "coverage", ".turbo"]);
@@ -180,6 +182,34 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description: "Generate an image with 0G's image model (z-image-turbo) and save it as a PNG in the working directory. Use for icons, placeholder assets, og-images, or a logo. Costs a small fee per image; at most 2 per call.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "What to generate." },
+          path: { type: "string", description: "Output PNG path relative to cwd. Defaults to image.png." },
+          n: { type: "number", description: "How many images (1 or 2). Default 1." },
+        },
+        required: ["prompt"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "transcribe_audio",
+      description: "Transcribe an audio file (inside the working directory) to text with 0G's speech model (whisper-large-v3).",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: "Audio file path relative to cwd." } },
+        required: ["path"],
+      },
+    },
+  },
 ];
 
 function safeResolve(cwd, p) {
@@ -266,6 +296,26 @@ export function makeExecutor({ cwd, allowBash, sessionDir }) {
             return { ok: false, summary: `skill ${args.name} not found`, content: "Unknown skill. Available: " + all.join(", ") };
           }
           return { ok: true, summary: `skill: ${args.name}`, content: doc };
+        }
+        case "generate_image": {
+          if (!args.prompt) return { ok: false, summary: "no prompt", content: "generate_image needs a prompt." };
+          const base = safeResolve(cwd, args.path || "image.png").replace(/\.png$/i, "");
+          const n = Math.max(1, Math.min(2, Number(args.n) || 1));
+          const images = await generateImage(makeClient(), { prompt: args.prompt, n });
+          const paths = [];
+          for (let i = 0; i < images.length; i++) {
+            const p = images.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`;
+            await fs.mkdir(path.dirname(p), { recursive: true });
+            await fs.writeFile(p, Buffer.from(images[i], "base64"));
+            paths.push(path.relative(cwd, p));
+          }
+          return { ok: true, summary: `wrote ${paths.join(", ")}`, content: `Generated ${paths.length} image(s) on 0G: ${paths.join(", ")}` };
+        }
+        case "transcribe_audio": {
+          const abs = safeResolve(cwd, args.path || "");
+          if (!args.path || !existsSync(abs)) return { ok: false, summary: "no file", content: `Audio file not found: ${args.path || "(none)"}` };
+          const text = await transcribeAudio(makeClient(), abs);
+          return { ok: true, summary: `transcribed ${path.basename(abs)}`, content: text || "(empty transcript)" };
         }
         default:
           return { ok: false, summary: `unknown tool ${name}`, content: `No such tool: ${name}` };

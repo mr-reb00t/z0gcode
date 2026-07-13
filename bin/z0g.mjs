@@ -3,7 +3,7 @@
 import "../src/env.mjs"; // load .env before config reads process.env
 import readline from "node:readline";
 import path from "node:path";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { exec } from "node:child_process";
 import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
 import { makeClient } from "../src/client.mjs";
@@ -19,6 +19,7 @@ import { loadMcp } from "../src/mcp.mjs";
 import { saveSetting } from "../src/settings.mjs";
 import { fetchModels, orderChatModels } from "../src/models-info.mjs";
 import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
+import { generateImage, transcribeAudio } from "../src/media.mjs";
 import { arrowSelect } from "../src/prompt.mjs";
 import * as ui from "../src/ui.mjs";
 
@@ -34,6 +35,10 @@ function helpText() {
       ["z0g skills", "List user/project skills (enable|disable <name>)"],
       ["z0g doctor", "Check your 0G setup (key, connectivity, model)"],
       ["z0g attest", "Show which 0G model wrote which change"],
+    ]],
+    ["Media", [
+      ['z0g image "<prompt>"', "Generate an image on 0G (z-image-turbo), saved as PNG"],
+      ["z0g transcribe <file>", "Transcribe audio on 0G (whisper-large-v3)"],
     ]],
     ["Serve", [
       ["z0g serve --mcp", "Expose z0gcode's 0G tools as an MCP server"],
@@ -205,6 +210,7 @@ function parse(argv) {
     if (a === "--auto") flags.auto = true;
     else if (a === "--mcp") flags.mcp = true;
     else if (a === "--json") flags.json = true;
+    else if (a === "--num") flags.num = Number(argv[++i]);
     else if (a === "--auto-verify") flags.autoVerify = true;
     else if (a === "--continue") flags.cont = true;
     else if (a === "--resume") flags.resume = true;
@@ -271,6 +277,33 @@ async function cmdModels(flags = {}) {
     return;
   }
   console.log(ui.renderModelsTable(models, { currentId: CONFIG.model }));
+}
+
+async function cmdImage(prompt, out, flags) {
+  if (!prompt) { console.log(ui.warn('Usage: z0g image "<prompt>" [out.png] [--num 2]')); return; }
+  const cwd = resolveCwd(flags);
+  const n = Math.max(1, Math.min(2, Number(flags.num) || 1));
+  const base = path.resolve(cwd, out || "image.png").replace(/\.png$/i, "");
+  ui.info(`generating ${n} image(s) on 0G (${CONFIG.imageModel})`);
+  const images = await generateImage(makeClient(), { prompt, n });
+  const written = [];
+  for (let i = 0; i < images.length; i++) {
+    const p = images.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`;
+    mkdirSync(path.dirname(p), { recursive: true });
+    writeFileSync(p, Buffer.from(images[i], "base64"));
+    written.push(path.relative(cwd, p) || p);
+  }
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " wrote " + ui.strong(written.join(", ")) + ui.muted("  · " + CONFIG.imageModel + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
+}
+
+async function cmdTranscribe(file, flags) {
+  if (!file) { console.log(ui.warn("Usage: z0g transcribe <audio-file>")); return; }
+  const cwd = resolveCwd(flags);
+  const abs = path.resolve(cwd, file);
+  if (!existsSync(abs)) { console.log(ui.warn("File not found: " + file)); return; }
+  ui.info(`transcribing on 0G (${CONFIG.transcribeModel})`);
+  const text = await transcribeAudio(makeClient(), abs);
+  console.log("\n" + (text || ui.muted("(empty transcript)")) + "\n");
 }
 
 async function cmdDoctor() {
@@ -626,6 +659,8 @@ async function main() {
   const sub = positional[0];
   try {
     if (sub === "models") return await cmdModels(flags);
+    if (sub === "image") return await cmdImage(positional[1], positional[2], flags);
+    if (sub === "transcribe") return await cmdTranscribe(positional[1], flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
     if (sub === "attest") {

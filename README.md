@@ -92,6 +92,7 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 - Verifiable provenance with `z0g attest`.
 - Native on-chain actions behind `--auto` + `ZOG_WALLET_KEY`: `upload_0g_storage` (publish to 0G Storage, returns a content root) and `deploy_0g_chain` (deploy a compiled contract, returns address + tx). Both verified on 0G mainnet.
 - Bundled 0G skills the agent reads on demand to write correct 0G code.
+- **Media on 0G**: `generate_image` (and `z0g image "<prompt>" [out.png]`) creates PNGs with `z-image-turbo`; `transcribe_audio` (and `z0g transcribe <file>`) turns audio into text with `whisper-large-v3`. Same Router, same key, both private and verifiable on 0G.
 
 **Extensible**
 - **User skills** (Claude-Code-style): drop a markdown file with `name` and `description` frontmatter into `~/.z0gcode/skills/<name>.md` (global) or `.z0g/skills/<name>.md` (project, or `<name>/SKILL.md`). z0gcode discovers it, injects the description so the model knows when to use it, and loads the body on demand via `read_skill` (progressive disclosure). Manage with `z0g skills` and `/skills enable|disable <name>`.
