@@ -126,7 +126,12 @@ npm run verify   # calls the Router directly, confirms tool-calling on the 0G co
 Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified, opt-in), the private verifiable session (`z0g share`, wallet-encrypted to 0G Storage + `--anchor` on 0G Chain, and `z0g pull` to fetch, verify, and decrypt, mainnet-verified), the session INFT (`z0g mint`, mainnet-verified), parallel subagents, media on 0G (image + transcription), MCP both ways, the model catalog and arrow-key picker, and user skills.
 
 Next:
-- **Share a session with someone**: today `z0g share` is a private, wallet-encrypted backup that only you can `pull`. Recipient-addressed sharing (`z0g share --to <recipient>`, end-to-end encrypted to their wallet via ECIES) plus a key-management layer, a custom domain or name registry, so you share to a handle instead of a raw `0x` address and key discovery and rotation are handled for you. This is the natural on-ramp to full ERC-7857 authorized users.
+- **Share a session, three ways.** Today `z0g share` is a *private* backup: the bundle is encrypted to your wallet, so only you can `pull` it. The plan keeps that and adds two ways to actually hand a session to someone, without ever trusting the storage layer with a key:
+  - **Link sharing (MEGA style):** encrypt with a random key that lives only in the share link's fragment, `https://<domain>/s/<root>#k=<key>`. The key is never uploaded and never leaves the `#` fragment, so the ciphertext sitting on public 0G Storage is unreadable without the link. Public in reach, link-gated in access: no link, no read.
+  - **Addressed sharing:** `z0g share --to <recipient>`, end-to-end encrypted to a wallet (ECIES), resolved through a key-management layer, a custom domain or name registry, so you share to a handle instead of a raw `0x` address and key discovery and rotation are handled for you.
+  - A **custom-domain web viewer** that pulls the ciphertext from 0G Storage and decrypts it in the browser using the fragment key (which, being after the `#`, never reaches the server), so a link recipient reads a session with nothing installed.
+
+  Together these are the on-ramp to full ERC-7857 authorized users.
 - Full ERC-7857 (encrypted metadata + oracle transfer) on top of the current session INFT.
 - Full TEE-quote verification of the provenance manifest (not just model + response id).
 - Publish `z0gcode` to npm; a shareable starter pack of user skills.
