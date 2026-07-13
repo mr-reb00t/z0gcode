@@ -153,10 +153,6 @@ CI runs the suite plus a syntax check on Node 18, 20, and 22 (see [.github/workf
 - [docs/MODELS.md](docs/MODELS.md): 0G Router model catalog and model choice.
 - [docs/PROOF.md](docs/PROOF.md): recorded, reproducible proof.
 
-## Team
-
-Mr Reboot.
-
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
