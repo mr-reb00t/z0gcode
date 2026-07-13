@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/z0gcode"><img src="https://img.shields.io/npm/v/z0gcode?color=A78BFF&label=npm" alt="npm"></a>
   <img src="https://img.shields.io/badge/license-MIT-A78BFF" alt="MIT license">
   <img src="https://img.shields.io/badge/node-18%2B-6B7080" alt="Node 18+">
   <img src="https://img.shields.io/badge/brain-0G_Compute_TEE-A78BFF" alt="0G Compute">
@@ -117,7 +118,7 @@ Every on-chain action, storage upload, chain deploy, the encrypted session `shar
 
 ## Roadmap
 
-Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified, opt-in), the private verifiable session (`z0g share`, wallet-encrypted to 0G Storage + `--anchor` on 0G Chain, and `z0g pull` to fetch, verify, and decrypt, mainnet-verified), the session INFT (`z0g mint`, mainnet-verified), parallel subagents, media on 0G (image + transcription), MCP both ways, the model catalog and arrow-key picker, and user skills.
+Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified, opt-in), the private verifiable session (`z0g share`, wallet-encrypted to 0G Storage + `--anchor` on 0G Chain, and `z0g pull` to fetch, verify, and decrypt, mainnet-verified), the session INFT (`z0g mint`, mainnet-verified), parallel subagents, media on 0G (image + transcription), MCP both ways, the model catalog and arrow-key picker, user skills, and a published npm package (`npm i -g z0gcode`).
 
 Next:
 - **Share a session, three ways.** Today `z0g share` is a *private* backup: the bundle is encrypted to your wallet, so only you can `pull` it. The plan keeps that and adds two ways to actually hand a session to someone, without ever trusting the storage layer with a key:
@@ -128,7 +129,7 @@ Next:
   Together these are the on-ramp to full ERC-7857 authorized users.
 - Full ERC-7857 (encrypted metadata + oracle transfer) on top of the current session INFT.
 - Full TEE-quote verification of the provenance manifest (not just model + response id).
-- Publish `z0gcode` to npm; a shareable starter pack of user skills.
+- A shareable starter pack of user skills.
 
 ## Development
 
