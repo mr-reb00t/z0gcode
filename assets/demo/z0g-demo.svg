@@ -1,16 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="820" height="552" viewBox="0 0 820 552" font-family="ui-monospace, 'SF Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" role="img" aria-label="z0gcode terminal demo: writing and verifying isPrime on 0G Compute">
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="840" viewBox="0 0 820 840" font-family="ui-monospace, 'SF Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace" role="img" aria-label="z0gcode terminal demo: coding, image generation, transcription, model catalog, parallel subagents, and a verifiable session on 0G Compute">
   <style>
     text { font-size: 14px; }
-    .acc { fill: #a78bff; }
-    .mut { fill: #6b7080; }
-    .txt { fill: #c9d1d9; }
-    .grn { fill: #3fb950; }
-    .cyn { fill: #56d4dd; }
-    .b   { font-weight: 700; }
+    .acc { fill: #a78bff; } .mut { fill: #6b7080; } .txt { fill: #c9d1d9; }
+    .grn { fill: #3fb950; } .cyn { fill: #56d4dd; } .yel { fill: #d29922; }
+    .b { font-weight: 700; } .sm { font-size: 11px; } .lbl { font-size: 11px; letter-spacing: .12em; }
   </style>
 
   <!-- window -->
-  <rect x="8" y="8" width="804" height="536" rx="10" fill="#0d1017" stroke="#30363d"/>
+  <rect x="8" y="8" width="804" height="824" rx="10" fill="#0d1017" stroke="#30363d"/>
   <rect x="8" y="8" width="804" height="34" rx="10" fill="#161b22"/>
   <rect x="8" y="30" width="804" height="12" fill="#161b22"/>
   <circle cx="28" cy="25" r="6" fill="#ff5f56"/>
@@ -19,46 +16,64 @@
   <text x="410" y="30" text-anchor="middle" class="mut">z0gcode · 0G Compute</text>
 
   <!-- banner (static) -->
-  <text x="24" y="72"><tspan class="acc b">z0gcode</tspan><tspan class="mut"> v0.2 · coding agent on 0G</tspan></text>
-  <text x="24" y="94" class="mut">model <tspan class="txt">0gm-1.0-35b-a3b</tspan> · router-api.0g.ai <tspan class="cyn">◈</tspan> TEE</text>
+  <text x="24" y="70"><tspan class="acc b">z0gcode</tspan><tspan class="mut"> v0.2 · one coding agent, one key, everything on 0G</tspan></text>
+  <text x="24" y="92" class="mut">model <tspan class="txt">0gm-1.0-35b-a3b</tspan> · router-api.0g.ai <tspan class="cyn">◈</tspan> private + verifiable (TEE)</text>
 
-  <!-- typed command -->
-  <text x="24" y="132"><tspan class="acc b">z0g ›</tspan></text>
-  <clipPath id="type"><rect x="72" y="118" width="0" height="20"><animate attributeName="width" begin="0.6s" dur="1.7s" from="0" to="620" fill="freeze"/></rect></clipPath>
-  <text x="74" y="132" class="txt" clip-path="url(#type)">write an isPrime(n) function in prime.js, then verify it with node</text>
-  <rect x="74" y="120" width="8" height="15" fill="#a78bff">
-    <animate attributeName="x" begin="0.6s" dur="1.7s" from="74" to="694" fill="freeze"/>
-    <animate attributeName="opacity" begin="0.6s" dur="0.7s" values="1;0;1" repeatCount="4"/>
-    <animate attributeName="opacity" begin="2.6s" dur="0.1s" to="0" fill="freeze"/>
+  <!-- ===== scene 1: coding ===== -->
+  <text x="790" y="124" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="0.4s" dur="0.2s" to="1" fill="freeze"/>CODE</text>
+  <text x="24" y="124"><tspan class="acc b">z0g ›</tspan></text>
+  <clipPath id="type"><rect x="72" y="110" width="0" height="20"><animate attributeName="width" begin="0.5s" dur="1.5s" from="0" to="500" fill="freeze"/></rect></clipPath>
+  <text x="74" y="124" class="txt" clip-path="url(#type)">write isPrime(n) in prime.js and verify it with node</text>
+  <rect x="74" y="112" width="8" height="15" fill="#a78bff">
+    <animate attributeName="x" begin="0.5s" dur="1.5s" from="74" to="560" fill="freeze"/>
+    <animate attributeName="opacity" begin="0.5s" dur="0.6s" values="1;0;1" repeatCount="3"/>
+    <animate attributeName="opacity" begin="2.2s" dur="0.1s" to="0" fill="freeze"/>
   </rect>
+  <text x="24" y="146" opacity="0"><animate attributeName="opacity" begin="2.3s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> write_file </tspan><tspan class="txt b">prime.js</tspan><tspan class="mut">   </tspan><tspan class="grn">✓</tspan><tspan class="mut"> 911 bytes</tspan></text>
+  <text x="24" y="168" class="grn" opacity="0"><animate attributeName="opacity" begin="2.6s" dur="0.12s" to="1" fill="freeze"/>+ function isPrime(n) { <tspan class="mut">… 6k±1, checks divisors up to √n …</tspan> }</text>
+  <text x="24" y="190" opacity="0"><animate attributeName="opacity" begin="2.9s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> run_bash </tspan><tspan class="txt b">node prime.js</tspan><tspan class="mut">   </tspan><tspan class="grn">✓</tspan><tspan class="mut"> exit 0 · 13/13 passed</tspan></text>
+  <text x="24" y="212" opacity="0"><animate attributeName="opacity" begin="3.2s" dur="0.15s" to="1" fill="freeze"/><tspan class="txt">Done. prime.js written and verified.  </tspan><tspan class="mut">· 0gm-1.0-35b-a3b </tspan><tspan class="cyn">◈</tspan><tspan class="mut"> TEE</tspan></text>
 
-  <!-- tool: write_file -->
-  <text x="24" y="164" opacity="0"><animate attributeName="opacity" begin="2.7s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> write_file </tspan><tspan class="txt b">prime.js</tspan></text>
-  <text x="44" y="184" opacity="0"><animate attributeName="opacity" begin="3.0s" dur="0.12s" to="1" fill="freeze"/><tspan class="grn">✓</tspan><tspan class="mut"> wrote prime.js (911 bytes)</tspan></text>
+  <!-- ===== scene 2: image ===== -->
+  <text x="790" y="248" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="3.6s" dur="0.2s" to="1" fill="freeze"/>IMAGE</text>
+  <text x="24" y="248" opacity="0"><animate attributeName="opacity" begin="3.6s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">z0g image "neon barred-zero 0G logo, violet on black"</tspan></text>
+  <text x="24" y="270" opacity="0"><animate attributeName="opacity" begin="3.9s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> z-image-turbo   </tspan><tspan class="grn">✓</tspan><tspan class="txt"> saved </tspan><tspan class="txt b">0g-logo.png</tspan><tspan class="mut"> (1024×1024)</tspan></text>
+  <text x="24" y="292" opacity="0"><animate attributeName="opacity" begin="4.2s" dur="0.12s" to="1" fill="freeze"/><tspan class="mut">· ~$0.0400 · z-image-turbo · </tspan><tspan class="cyn">◈</tspan><tspan class="mut"> 0G Compute (TEE)</tspan></text>
 
-  <!-- diff (green added lines) -->
-  <text x="44" y="206" class="grn" opacity="0"><animate attributeName="opacity" begin="3.25s" dur="0.1s" to="1" fill="freeze"/>+ function isPrime(n) {</text>
-  <text x="44" y="226" class="grn" opacity="0"><animate attributeName="opacity" begin="3.4s" dur="0.1s" to="1" fill="freeze"/>+   if (n &lt; 2) return false;</text>
-  <text x="44" y="246" class="grn" opacity="0"><animate attributeName="opacity" begin="3.55s" dur="0.1s" to="1" fill="freeze"/>+   if (n % 2 === 0 || n % 3 === 0) return false;</text>
-  <text x="44" y="266" class="grn" opacity="0"><animate attributeName="opacity" begin="3.7s" dur="0.1s" to="1" fill="freeze"/>+   for (let i = 5; i * i &lt;= n; i += 6) {</text>
-  <text x="44" y="286" class="grn" opacity="0"><animate attributeName="opacity" begin="3.85s" dur="0.1s" to="1" fill="freeze"/>+     if (n % i === 0 || n % (i + 2) === 0) return false;</text>
-  <text x="44" y="306" class="grn" opacity="0"><animate attributeName="opacity" begin="4.0s" dur="0.1s" to="1" fill="freeze"/>+   }  <tspan class="mut">… + return true; }</tspan></text>
+  <!-- ===== scene 3: transcription ===== -->
+  <text x="790" y="328" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="4.6s" dur="0.2s" to="1" fill="freeze"/>AUDIO</text>
+  <text x="24" y="328" opacity="0"><animate attributeName="opacity" begin="4.6s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">z0g transcribe standup.m4a</tspan></text>
+  <text x="24" y="350" opacity="0"><animate attributeName="opacity" begin="4.9s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> whisper-large-v3   </tspan><tspan class="grn">✓</tspan><tspan class="mut"> 42.6s of audio</tspan></text>
+  <text x="24" y="372" opacity="0"><animate attributeName="opacity" begin="5.2s" dur="0.12s" to="1" fill="freeze"/><tspan class="txt">"shipped the 0G storage upload, next is the INFT mint…"</tspan></text>
+  <text x="24" y="394" opacity="0"><animate attributeName="opacity" begin="5.5s" dur="0.12s" to="1" fill="freeze"/><tspan class="mut">· ~$0.0007 · whisper-large-v3 · </tspan><tspan class="cyn">◈</tspan><tspan class="mut"> 0G Compute (TEE)</tspan></text>
 
-  <!-- tool: run_bash -->
-  <text x="24" y="338" opacity="0"><animate attributeName="opacity" begin="4.4s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> run_bash </tspan><tspan class="txt b">node prime.js</tspan></text>
-  <text x="44" y="358" opacity="0"><animate attributeName="opacity" begin="4.7s" dur="0.12s" to="1" fill="freeze"/><tspan class="grn">✓</tspan><tspan class="mut"> bash exit 0 · 13/13 tests passed</tspan></text>
+  <!-- ===== scene 4: model catalog ===== -->
+  <text x="790" y="430" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="5.9s" dur="0.2s" to="1" fill="freeze"/>MODELS</text>
+  <text x="24" y="430" opacity="0"><animate attributeName="opacity" begin="5.9s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">z0g models</tspan></text>
+  <text x="24" y="452" xml:space="preserve" class="mut" opacity="0"><animate attributeName="opacity" begin="6.1s" dur="0.1s" to="1" fill="freeze"/>MODEL             IN/1M   OUT/1M   CTX     TRUST</text>
+  <text x="24" y="472" xml:space="preserve" opacity="0"><animate attributeName="opacity" begin="6.25s" dur="0.1s" to="1" fill="freeze"/><tspan class="txt">0gm-1.0-35b-a3b   $0.04   $0.14    131K    </tspan><tspan class="cyn">◆ private</tspan></text>
+  <text x="24" y="492" xml:space="preserve" opacity="0"><animate attributeName="opacity" begin="6.4s" dur="0.1s" to="1" fill="freeze"/><tspan class="txt">deepseek-v4-pro   $0.28   $0.42    164K    </tspan><tspan class="acc">◇ verifiable</tspan></text>
+  <text x="24" y="512" xml:space="preserve" opacity="0"><animate attributeName="opacity" begin="6.55s" dur="0.1s" to="1" fill="freeze"/><tspan class="txt">glm-5.2           $0.11   $0.22    131K    </tspan><tspan class="mut">· open</tspan></text>
 
-  <!-- final answer -->
-  <text x="24" y="392" class="txt" opacity="0"><animate attributeName="opacity" begin="5.2s" dur="0.15s" to="1" fill="freeze"/>Done. Wrote <tspan class="b">prime.js</tspan> with a 6k±1 <tspan class="b">isPrime(n)</tspan>; all 13 test</text>
-  <text x="24" y="412" class="txt" opacity="0"><animate attributeName="opacity" begin="5.4s" dur="0.15s" to="1" fill="freeze"/>cases pass, including edge cases and 997 / 1009.</text>
-  <text x="24" y="440" opacity="0"><animate attributeName="opacity" begin="5.7s" dur="0.2s" to="1" fill="freeze"/><tspan class="mut">· 2870 in / 148 out · 0gm-1.0-35b-a3b · </tspan><tspan class="cyn">◈</tspan><tspan class="mut"> 0G Compute (TEE)</tspan></text>
+  <!-- ===== scene 5: parallel subagents ===== -->
+  <text x="790" y="548" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="6.9s" dur="0.2s" to="1" fill="freeze"/>SUBAGENTS</text>
+  <text x="24" y="548" opacity="0"><animate attributeName="opacity" begin="6.9s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">review src/ with subagents for security issues</tspan></text>
+  <text x="24" y="570" opacity="0"><animate attributeName="opacity" begin="7.2s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> spawn_subagents   </tspan><tspan class="acc">◇</tspan><tspan class="mut"> 3 agents running in parallel on 0G</tspan></text>
+  <text x="24" y="592" opacity="0"><animate attributeName="opacity" begin="7.5s" dur="0.12s" to="1" fill="freeze"/><tspan class="mut">  </tspan><tspan class="grn">✓ auth.js</tspan><tspan class="mut">   </tspan><tspan class="grn">✓ api.js</tspan><tspan class="mut">   </tspan><tspan class="grn">✓ db.js</tspan></text>
+  <text x="24" y="614" opacity="0"><animate attributeName="opacity" begin="7.8s" dur="0.12s" to="1" fill="freeze"/><tspan class="txt">Synthesized 3 findings from parallel agents. </tspan><tspan class="mut">Cost: cents.</tspan></text>
+
+  <!-- ===== scene 6: verifiable session + attest ===== -->
+  <text x="790" y="650" text-anchor="end" class="mut lbl" opacity="0"><animate attributeName="opacity" begin="8.2s" dur="0.2s" to="1" fill="freeze"/>ON-CHAIN</text>
+  <text x="24" y="650" opacity="0"><animate attributeName="opacity" begin="8.2s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">/share --anchor</tspan></text>
+  <text x="24" y="672" opacity="0"><animate attributeName="opacity" begin="8.5s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> 0G Storage   </tspan><tspan class="grn">✓</tspan><tspan class="mut"> root </tspan><tspan class="txt">0xb67f4960…</tspan></text>
+  <text x="24" y="694" opacity="0"><animate attributeName="opacity" begin="8.8s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc">▶</tspan><tspan class="txt"> 0G Chain     </tspan><tspan class="grn">✓</tspan><tspan class="mut"> anchored </tspan><tspan class="txt">0xa2348022…</tspan><tspan class="mut"> · block 38686571</tspan></text>
+  <text x="24" y="716" opacity="0"><animate attributeName="opacity" begin="9.1s" dur="0.12s" to="1" fill="freeze"/><tspan class="acc b">z0g › </tspan><tspan class="txt">z0g attest</tspan></text>
+  <text x="24" y="738" opacity="0"><animate attributeName="opacity" begin="9.4s" dur="0.12s" to="1" fill="freeze"/><tspan class="grn">✓</tspan><tspan class="txt"> prime.js  ←  0gm-1.0-35b-a3b   </tspan><tspan class="cyn">◈</tspan><tspan class="mut"> verifiable provenance</tspan></text>
 
   <!-- next prompt + blinking caret -->
-  <text x="24" y="476" opacity="0"><animate attributeName="opacity" begin="6.0s" dur="0.2s" to="1" fill="freeze"/><tspan class="acc b">z0g ›</tspan></text>
-  <rect x="74" y="464" width="8" height="15" fill="#a78bff" opacity="0">
-    <animate attributeName="opacity" begin="6.2s" dur="0.9s" values="0;1;1;0;0" repeatCount="indefinite"/>
-  </rect>
+  <text x="24" y="774" opacity="0"><animate attributeName="opacity" begin="9.8s" dur="0.2s" to="1" fill="freeze"/><tspan class="acc b">z0g ›</tspan></text>
+  <rect x="74" y="762" width="8" height="15" fill="#a78bff" opacity="0"><animate attributeName="opacity" begin="10.0s" dur="0.9s" values="0;1;1;0;0" repeatCount="indefinite"/></rect>
 
-  <!-- provenance seal footer -->
-  <text x="24" y="512" class="mut" font-size="12">Every token served by 0G Compute · private and verifiable (TEE) · z0g attest proves which model wrote it</text>
+  <!-- footer -->
+  <text x="24" y="808" class="mut sm">No OpenAI or Anthropic key. Every token private and verifiable on 0G Compute (TEE).</text>
 </svg>
