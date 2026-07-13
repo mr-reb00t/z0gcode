@@ -1,12 +1,17 @@
-// Generate assets/demo/z0g-demo.svg: an animated, sectioned terminal demo with
-// the full 0G model catalog. Layout follows the "Ledger" design (trust color
-// rail catalog as the hero) with L-bracket section dividers. Run:
-//   node scripts/gen-demo.mjs
+// Generate assets/demo/z0g-demo.svg: an animated terminal demo with a FIXED
+// viewport that auto-scrolls as new content appears (like a real terminal).
+// Six labeled action sections; the full live 0G model catalog is the hero.
+// Run:  node scripts/gen-demo.mjs
 import { writeFileSync } from "node:fs";
 
 const C = { bg: "#0d1017", chrome: "#161b22", rule: "#1f2630", text: "#c9d1d9", mut: "#6b7080", grn: "#3fb950", cyn: "#56d4dd", vio: "#a78bff" };
 const TIER = { priv: C.vio, ver: C.cyn, open: C.mut };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// viewport / window geometry
+const W = 820, VIEW_TOP = 96, VIEW_H = 500, FOOT_H = 40;
+const H = VIEW_TOP + VIEW_H + FOOT_H;      // total svg height
+const BOTTOM = VIEW_H - 44;                 // content-y that should sit near the viewport bottom
 
 function txt(x, y, s, o = {}) {
   let a = `x="${x}" y="${y}"`;
@@ -22,12 +27,12 @@ const line = (x1, y1, x2, y2, stroke, w) => `<line x1="${x1}" y1="${y1}" x2="${x
 const circle = (cx, cy, r, fill) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/>`;
 const group = (begin, inner, dur = 0.3) => `<g opacity="0"><animate attributeName="opacity" begin="${begin.toFixed(2)}s" dur="${dur}s" to="1" fill="freeze"/>${inner}</g>`;
 
-// Column x-positions for the model ledger (numerics are end-anchored).
 const COL = { dot: 44, model: 60, ctx: 322, max: 402, in: 542, out: 636, save: 742 };
 
-let out = "";
-let y = 96;   // content cursor
-let t = 2.4;  // reveal-time cursor (after the typed command)
+let out = "";        // scrolling content (content-y coords, 0-based)
+let y = 8;           // content cursor
+let t = 2.4;         // reveal-time cursor (after the typed command)
+const keys = [{ t: 0, y: 0 }]; // scroll keyframes: {time, target content-y}
 
 function section({ idx, title, accent, echo, chunks }) {
   const yD = y + 26;
@@ -46,20 +51,21 @@ function section({ idx, title, accent, echo, chunks }) {
     txt(42, hb, idx, { size: 11, fill: accent, ls: 1 }) +
     txt(62, hb, title, { size: 12.5, fill: C.text, bold: true, ls: 2 }) +
     txt(796, hb, echo, { size: 10.5, fill: C.mut, anchor: "end" }), 0.35);
+  keys.push({ t: t0, y: hb });
   let ry = firstRow, rt = t0 + 0.35;
   for (const chunk of chunks) {
     let inner = "";
-    for (const rowFn of chunk) { inner += rowFn(ry); ry += 20; }
+    let lastRow = ry;
+    for (const rowFn of chunk) { inner += rowFn(ry); lastRow = ry; ry += 20; }
     out += group(rt, inner);
-    rt += 0.26;
+    keys.push({ t: rt, y: lastRow });
+    rt += 0.24;
   }
   y = lastY + 6 + 26;
-  t = rt + 0.12;
+  t = rt + 0.1;
 }
 
-// A content line = array of spans {x, s, fill, size, bold, anchor, ls}.
 const lineRow = (spans) => (yy) => spans.map((sp) => txt(sp.x, yy, sp.s, sp)).join("");
-// A ledger data row.
 const dataRow = (m, zebra) => (yy) => {
   let s = "";
   if (zebra) s += rect(24, yy - 14, 772, 20, C.chrome, { op: 0.55 });
@@ -72,7 +78,6 @@ const dataRow = (m, zebra) => (yy) => {
   s += m.save ? txt(COL.save, yy, m.save, { size: 12, fill: C.grn, anchor: "end" }) : txt(COL.save - 6, yy, "·", { size: 12, fill: C.mut, anchor: "end" });
   return s;
 };
-// A group sub-header band inside the catalog.
 const bandRow = (label, color, note) => (yy) => rect(24, yy - 14, 772, 20, C.chrome, { rx: 3 }) +
   circle(34, yy - 4, 4, color) +
   txt(48, yy, label, { size: 10.5, fill: color, ls: 1.5 }) +
@@ -98,14 +103,8 @@ const OPEN = [
   { id: "claude-fable-5", ctx: "1M", max: "128K", in: "$9.000", out: "$45.00", save: "-10%", tier: "open" },
 ];
 const NATIVE = { id: "0gm-1.0-35b-a3b", ctx: "256K", max: "32K", in: "$0.080", out: "$0.480", save: "-50%", tier: "priv" };
-
-// zebra counter across all data rows
 let zc = 0;
 const zRow = (m) => { const r = dataRow(m, zc % 2 === 1); zc++; return r; };
-
-// ------------------------------------------------------------------- header
-out += group(0.4, txt(790, 74, "TASK", { size: 11, fill: C.vio, ls: 1, anchor: "end" }), 0.2);
-const cmd = 'ship a landing page, make a hero image, and prove it on-chain';
 
 // ================================================================= sections
 section({
@@ -120,7 +119,6 @@ section({
     ],
   ],
 });
-
 section({
   idx: "02", title: "GENERATE IMAGE", accent: C.vio, echo: "generate_image · z-image-turbo",
   chunks: [
@@ -129,7 +127,6 @@ section({
     [lineRow([{ x: 44, s: "✓ saved public/hero.png", fill: C.grn, size: 13 }, { x: 260, s: "cost ", fill: C.mut, size: 13 }, { x: 296, s: "$0.006", fill: C.text, size: 13 }])],
   ],
 });
-
 section({
   idx: "03", title: "TRANSCRIBE AUDIO", accent: C.cyn, echo: "transcribe · whisper-large-v3",
   chunks: [
@@ -139,7 +136,6 @@ section({
     [lineRow([{ x: 44, s: "✓ transcript.txt", fill: C.grn, size: 13 }, { x: 200, s: "cost ", fill: C.mut, size: 13 }, { x: 236, s: "$0.011", fill: C.text, size: 13 }])],
   ],
 });
-
 section({
   idx: "04", title: "MODEL CATALOG", accent: C.vio, echo: "z0g models · 15 models · 3 tiers",
   chunks: [
@@ -163,7 +159,6 @@ section({
     [lineRow([{ x: 44, s: "media: whisper-large-v3 · z-image-turbo priced per-call (see 02 · 03)", fill: C.mut, size: 9.5 }])],
   ],
 });
-
 section({
   idx: "05", title: "PARALLEL SUBAGENTS", accent: C.cyn, echo: "spawn_write_subagents ×3 · git worktrees",
   chunks: [
@@ -174,7 +169,6 @@ section({
     [lineRow([{ x: 44, s: "✓ 3 branches merged into the working tree", fill: C.grn, size: 13 }])],
   ],
 });
-
 section({
   idx: "06", title: "VERIFIABLE ON-CHAIN", accent: C.grn, echo: "share · anchor · attest",
   chunks: [
@@ -185,31 +179,52 @@ section({
   ],
 });
 
-// -------------------------------------------------------------------- footer
-const footY = y + 6;
-const H = footY + 30;
+// -------------------------------------------------------- scroll transform
+const contentBottom = y;
+const totalDur = (t + 0.6);
+keys.push({ t: totalDur, y: contentBottom });
+const scrollOf = (cy) => Math.max(0, cy - BOTTOM);
+const values = keys.map((k) => `0 ${(VIEW_TOP - scrollOf(k.y)).toFixed(1)}`).join(" ; ");
+const keyTimes = keys.map((k) => (k.t / totalDur).toFixed(4)).join(" ; ");
+const scroll = `<animateTransform attributeName="transform" type="translate" values="${values}" keyTimes="${keyTimes}" dur="${totalDur.toFixed(2)}s" fill="freeze"/>`;
 
-const header = [
-  rect(8, 8, 804, H - 16, C.bg, {}).replace("/>", ` rx="10" stroke="#30363d"/>`),
+// ---------------------------------------------------------------- assembly
+const cmd = "ship a landing page, make a hero image, and prove it on-chain";
+const chrome = [
+  rect(8, 8, 804, H - 16, C.bg, { rx: 10 }).replace("/>", ` stroke="#30363d"/>`),
   rect(8, 8, 804, 34, C.chrome, { rx: 10 }),
   rect(8, 30, 804, 12, C.chrome),
   circle(28, 25, 6, "#ff5f56"), circle(48, 25, 6, "#ffbd2e"), circle(68, 25, 6, "#27c93f"),
   txt(410, 30, "z0gcode · 0G Compute", { size: 13, fill: C.mut, anchor: "middle" }),
-  // typed command
   txt(24, 74, "z0g ›", { size: 14, fill: C.vio, bold: true }),
   `<clipPath id="type"><rect x="72" y="60" width="0" height="20"><animate attributeName="width" begin="0.6s" dur="1.5s" from="0" to="540" fill="freeze"/></rect></clipPath>`,
   `<text x="74" y="74" font-size="14" fill="${C.text}" clip-path="url(#type)">${esc(cmd)}</text>`,
   `<rect x="74" y="62" width="8" height="15" fill="${C.vio}"><animate attributeName="x" begin="0.6s" dur="1.5s" from="74" to="590" fill="freeze"/><animate attributeName="opacity" begin="0.6s" dur="0.6s" values="1;0;1" repeatCount="3"/><animate attributeName="opacity" begin="2.2s" dur="1s" values="1;1;0;0;1" repeatCount="indefinite"/></rect>`,
+  line(8, 88, 812, 88, "#30363d", 1),
 ].join("\n  ");
 
-const footer = group(t, txt(24, footY, "No OpenAI or Anthropic key. Every token private and verifiable on 0G Compute (TEE).", { size: 11, fill: C.mut }));
+const defs = `<defs>
+  <clipPath id="view"><rect x="8" y="${VIEW_TOP}" width="804" height="${VIEW_H}"/></clipPath>
+  <linearGradient id="fadeTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.bg}"/><stop offset="1" stop-color="${C.bg}" stop-opacity="0"/></linearGradient>
+  <linearGradient id="fadeBot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.bg}" stop-opacity="0"/><stop offset="1" stop-color="${C.bg}"/></linearGradient>
+</defs>`;
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="820" height="${H}" viewBox="0 0 820 ${H}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-label="z0gcode terminal demo: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session, all on 0G Compute">
-  ${header}
-  ${out}
+const scrollArea = `<g clip-path="url(#view)"><g transform="translate(0 ${VIEW_TOP})">${scroll}${out}</g></g>`;
+const fades =
+  `<rect x="9" y="${VIEW_TOP}" width="802" height="22" fill="url(#fadeTop)"/>` +
+  `<rect x="9" y="${VIEW_TOP + VIEW_H - 22}" width="802" height="22" fill="url(#fadeBot)"/>`;
+const footer =
+  line(8, VIEW_TOP + VIEW_H, 812, VIEW_TOP + VIEW_H, "#30363d", 1) +
+  txt(24, H - 14, "No OpenAI or Anthropic key. Every token private and verifiable on 0G Compute (TEE).", { size: 11, fill: C.mut });
+
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-label="z0gcode terminal demo that auto-scrolls through six action sections: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session">
+  ${defs}
+  ${chrome}
+  ${scrollArea}
+  ${fades}
   ${footer}
 </svg>
 `;
 
 writeFileSync(new URL("../assets/demo/z0g-demo.svg", import.meta.url), svg);
-console.log("wrote assets/demo/z0g-demo.svg · height", H, "· bytes", svg.length);
+console.log("wrote assets/demo/z0g-demo.svg · viewport", W + "x" + H, "· content", contentBottom, "px · dur", totalDur.toFixed(1) + "s · bytes", svg.length);

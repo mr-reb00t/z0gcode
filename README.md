@@ -21,7 +21,7 @@
 Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infrastructure & Tooling).
 
 <p align="center">
-  <img src="assets/demo/z0g-demo.svg" alt="z0gcode, sectioned by action: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session" width="820">
+  <img src="assets/demo/z0g-demo.svg" alt="z0gcode terminal auto-scrolling through six action sections: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session" width="820">
 </p>
 
 ```
