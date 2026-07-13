@@ -285,7 +285,7 @@ async function cmdImage(prompt, out, flags) {
   const n = Math.max(1, Math.min(2, Number(flags.num) || 1));
   const base = path.resolve(cwd, out || "image.png").replace(/\.png$/i, "");
   ui.info(`generating ${n} image(s) on 0G (${CONFIG.imageModel})`);
-  const images = await generateImage(makeClient(), { prompt, n });
+  const { images, cost } = await generateImage(makeClient(), { prompt, n });
   const written = [];
   for (let i = 0; i < images.length; i++) {
     const p = images.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`;
@@ -293,7 +293,8 @@ async function cmdImage(prompt, out, flags) {
     writeFileSync(p, Buffer.from(images[i], "base64"));
     written.push(path.relative(cwd, p) || p);
   }
-  console.log("  " + ui.ok(ui.GLYPH.ok) + " wrote " + ui.strong(written.join(", ")) + ui.muted("  · " + CONFIG.imageModel + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
+  const costStr = cost != null ? " · ~$" + cost.toFixed(4) : "";
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " wrote " + ui.strong(written.join(", ")) + ui.muted("  · " + CONFIG.imageModel + costStr + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
 }
 
 async function cmdTranscribe(file, flags) {
@@ -302,8 +303,12 @@ async function cmdTranscribe(file, flags) {
   const abs = path.resolve(cwd, file);
   if (!existsSync(abs)) { console.log(ui.warn("File not found: " + file)); return; }
   ui.info(`transcribing on 0G (${CONFIG.transcribeModel})`);
-  const text = await transcribeAudio(makeClient(), abs);
+  const { text, duration, cost } = await transcribeAudio(makeClient(), abs);
   console.log("\n" + (text || ui.muted("(empty transcript)")) + "\n");
+  const meta = [CONFIG.transcribeModel];
+  if (duration) meta.push(duration.toFixed(1) + "s");
+  if (cost != null) meta.push("~$" + cost.toFixed(4));
+  console.log(ui.muted("  · " + meta.join(" · ") + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
 }
 
 async function cmdDoctor() {

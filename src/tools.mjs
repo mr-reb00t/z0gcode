@@ -301,7 +301,7 @@ export function makeExecutor({ cwd, allowBash, sessionDir }) {
           if (!args.prompt) return { ok: false, summary: "no prompt", content: "generate_image needs a prompt." };
           const base = safeResolve(cwd, args.path || "image.png").replace(/\.png$/i, "");
           const n = Math.max(1, Math.min(2, Number(args.n) || 1));
-          const images = await generateImage(makeClient(), { prompt: args.prompt, n });
+          const { images, cost } = await generateImage(makeClient(), { prompt: args.prompt, n });
           const paths = [];
           for (let i = 0; i < images.length; i++) {
             const p = images.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`;
@@ -309,13 +309,15 @@ export function makeExecutor({ cwd, allowBash, sessionDir }) {
             await fs.writeFile(p, Buffer.from(images[i], "base64"));
             paths.push(path.relative(cwd, p));
           }
-          return { ok: true, summary: `wrote ${paths.join(", ")}`, content: `Generated ${paths.length} image(s) on 0G: ${paths.join(", ")}` };
+          const costStr = cost != null ? ` (~$${cost.toFixed(4)})` : "";
+          return { ok: true, summary: `wrote ${paths.join(", ")}${costStr}`, content: `Generated ${paths.length} image(s) on 0G: ${paths.join(", ")}${costStr}` };
         }
         case "transcribe_audio": {
           const abs = safeResolve(cwd, args.path || "");
           if (!args.path || !existsSync(abs)) return { ok: false, summary: "no file", content: `Audio file not found: ${args.path || "(none)"}` };
-          const text = await transcribeAudio(makeClient(), abs);
-          return { ok: true, summary: `transcribed ${path.basename(abs)}`, content: text || "(empty transcript)" };
+          const { text, cost } = await transcribeAudio(makeClient(), abs);
+          const costStr = cost != null ? ` (~$${cost.toFixed(4)})` : "";
+          return { ok: true, summary: `transcribed ${path.basename(abs)}${costStr}`, content: text || "(empty transcript)" };
         }
         default:
           return { ok: false, summary: `unknown tool ${name}`, content: `No such tool: ${name}` };
