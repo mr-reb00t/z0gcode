@@ -6,99 +6,103 @@
       <stop offset="0.55" stop-color="#fff" stop-opacity="0.95"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
-    <mask id="markMask" maskUnits="userSpaceOnUse" x="-16" y="-16" width="300" height="180">
-      <rect x="0" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="14" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="28" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="42" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="56" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="210" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="224" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="238" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="252" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="42" y="29" width="14" height="29" fill="#fff"/>
-    <rect x="56" y="29" width="14" height="29" fill="#fff"/>
-    <rect x="196" y="29" width="14" height="29" fill="#fff"/>
-    <rect x="28" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="42" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="196" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="238" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="252" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="14" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="28" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="196" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="252" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="0" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="14" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="28" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="42" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="56" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="210" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="224" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="238" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="252" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="112" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="126" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="140" y="0" width="14" height="29" fill="#fff"/>
-    <rect x="98" y="29" width="14" height="29" fill="#fff"/>
-    <rect x="154" y="29" width="14" height="29" fill="#fff"/>
-    <rect x="98" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="154" y="58" width="14" height="29" fill="#fff"/>
-    <rect x="98" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="154" y="87" width="14" height="29" fill="#fff"/>
-    <rect x="112" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="126" y="116" width="14" height="29" fill="#fff"/>
-    <rect x="140" y="116" width="14" height="29" fill="#fff"/>
-    <line x1="112" y1="116" x2="154" y2="29" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+    <mask id="markMask" maskUnits="userSpaceOnUse" x="-20" y="-20" width="382" height="190">
+      <rect x="0" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="18" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="36" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="54" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="72" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="144" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="162" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="180" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="270" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="288" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="306" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="324" y="0" width="18" height="30" fill="#fff"/>
+      <rect x="54" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="72" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="126" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="180" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="198" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="252" y="30" width="18" height="30" fill="#fff"/>
+      <rect x="36" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="54" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="126" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="162" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="198" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="252" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="306" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="324" y="60" width="18" height="30" fill="#fff"/>
+      <rect x="18" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="36" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="126" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="144" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="198" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="252" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="324" y="90" width="18" height="30" fill="#fff"/>
+      <rect x="0" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="18" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="36" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="54" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="72" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="144" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="162" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="180" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="270" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="288" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="306" y="120" width="18" height="30" fill="#fff"/>
+      <rect x="324" y="120" width="18" height="30" fill="#fff"/>
     </mask>
   </defs>
   <rect x="0.5" y="0.5" width="599" height="253" rx="14" fill="#0d1117" stroke="#21262d"/>
-  <g transform="translate(167,28)"><animate attributeName="opacity" begin="0s" dur="0.5s" from="0" to="1" fill="freeze"/>
-    <rect x="0" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="14" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="28" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="42" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="56" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="210" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="224" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="238" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="252" y="0" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="42" y="29" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="56" y="29" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="196" y="29" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="28" y="58" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="42" y="58" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="196" y="58" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="238" y="58" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="252" y="58" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="14" y="87" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="28" y="87" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="196" y="87" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="252" y="87" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="0" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="14" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="28" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="42" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="56" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="210" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="224" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="238" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="252" y="116" width="14" height="29" fill="#F2F1EC"/>
-    <rect x="112" y="0" width="14" height="29" fill="#A78BFF"/>
-    <rect x="126" y="0" width="14" height="29" fill="#A78BFF"/>
-    <rect x="140" y="0" width="14" height="29" fill="#A78BFF"/>
-    <rect x="98" y="29" width="14" height="29" fill="#A78BFF"/>
-    <rect x="154" y="29" width="14" height="29" fill="#A78BFF"/>
-    <rect x="98" y="58" width="14" height="29" fill="#A78BFF"/>
-    <rect x="154" y="58" width="14" height="29" fill="#A78BFF"/>
-    <rect x="98" y="87" width="14" height="29" fill="#A78BFF"/>
-    <rect x="154" y="87" width="14" height="29" fill="#A78BFF"/>
-    <rect x="112" y="116" width="14" height="29" fill="#A78BFF"/>
-    <rect x="126" y="116" width="14" height="29" fill="#A78BFF"/>
-    <rect x="140" y="116" width="14" height="29" fill="#A78BFF"/>
-    <line x1="112" y1="116" x2="154" y2="29" stroke="#A78BFF" stroke-width="11" stroke-linecap="round"/>
-    <rect x="-96" y="-14" width="84" height="176" fill="url(#shineGrad)" mask="url(#markMask)">
-      <animate attributeName="x" begin="0.7s" dur="4.4s" repeatCount="indefinite" keyTimes="0;0.5;0.78;1" values="-96;-96;362;362"/>
+  <g transform="translate(129,30)"><animate attributeName="opacity" begin="0s" dur="0.5s" from="0" to="1" fill="freeze"/>
+    <rect x="0" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="18" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="36" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="54" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="72" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="270" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="288" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="306" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="324" y="0" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="54" y="30" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="72" y="30" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="252" y="30" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="36" y="60" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="54" y="60" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="252" y="60" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="306" y="60" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="324" y="60" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="18" y="90" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="36" y="90" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="252" y="90" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="324" y="90" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="0" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="18" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="36" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="54" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="72" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="270" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="288" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="306" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="324" y="120" width="18" height="30" fill="#F2F1EC"/>
+    <rect x="144" y="0" width="18" height="30" fill="#A78BFF"/>
+    <rect x="162" y="0" width="18" height="30" fill="#A78BFF"/>
+    <rect x="180" y="0" width="18" height="30" fill="#A78BFF"/>
+    <rect x="126" y="30" width="18" height="30" fill="#A78BFF"/>
+    <rect x="180" y="30" width="18" height="30" fill="#A78BFF"/>
+    <rect x="198" y="30" width="18" height="30" fill="#A78BFF"/>
+    <rect x="126" y="60" width="18" height="30" fill="#A78BFF"/>
+    <rect x="162" y="60" width="18" height="30" fill="#A78BFF"/>
+    <rect x="198" y="60" width="18" height="30" fill="#A78BFF"/>
+    <rect x="126" y="90" width="18" height="30" fill="#A78BFF"/>
+    <rect x="144" y="90" width="18" height="30" fill="#A78BFF"/>
+    <rect x="198" y="90" width="18" height="30" fill="#A78BFF"/>
+    <rect x="144" y="120" width="18" height="30" fill="#A78BFF"/>
+    <rect x="162" y="120" width="18" height="30" fill="#A78BFF"/>
+    <rect x="180" y="120" width="18" height="30" fill="#A78BFF"/>
+    <rect x="-108" y="-14" width="90" height="178" fill="url(#shineGrad)" mask="url(#markMask)">
+      <animate attributeName="x" begin="0.7s" dur="4.4s" repeatCount="indefinite" keyTimes="0;0.5;0.78;1" values="-108;-108;522;522"/>
     </rect>
   </g>
   <style>
