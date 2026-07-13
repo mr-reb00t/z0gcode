@@ -670,6 +670,9 @@ async function repl(flags) {
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
   if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
   if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
+  // Blinking block cursor at the prompt (matches the demo); restore on any exit.
+  ui.cursorBlink(true);
+  process.once("exit", () => ui.cursorBlink(false));
   showPrompt();
   for await (const line of rl) {
     const input = line.trim();
@@ -837,6 +840,7 @@ async function repl(flags) {
     showPrompt();
   }
   rl.close();
+  ui.cursorBlink(false);
   await pruneIfEmpty(sessionId);
   await mcp?.close();
 }

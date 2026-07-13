@@ -24,6 +24,12 @@ const underlineFn = sgr("4", "24");
 const mdCyan = sgr("36", "39"); // inline code / code blocks
 export const reverse = (s) => (useColor ? `\x1b[7m${s}\x1b[27m` : String(s));
 
+// Blinking block cursor at the prompt (DECSCUSR), matching the README demo.
+// on -> blinking block; off -> restore the terminal default. TTY only.
+export function cursorBlink(on) {
+  if (uiTTY) process.stdout.write(on ? "\x1b[1 q" : "\x1b[0 q");
+}
+
 // Backward-compatible color map (older call sites).
 export const color = {
   dim: muted, bold: strong, cyan: accent, green: ok, yellow: warn,
