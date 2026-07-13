@@ -18,8 +18,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # Only the runtime deps are needed for the offline test suite; the
-      # optional on-chain SDKs (ethers, 0g-storage) are not required in CI.
-      - run: npm install --omit=optional
+      # optional on-chain SDKs (ethers, 0g-storage) are skipped. --legacy-peer-deps
+      # avoids evaluating the optional SDK's exact-ethers peer pin.
+      - run: npm install --omit=optional --legacy-peer-deps
       - name: Syntax check all sources
         run: for f in src/*.mjs bin/*.mjs; do node --check "$f"; done
       - name: Run tests
