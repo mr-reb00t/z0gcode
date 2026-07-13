@@ -101,6 +101,7 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 - `z0g models`: a live table from the Router (price in and out per 1M tokens, context, max output, TEE trust tier, savings vs the official API), grouped 0G-native, verifiable, and open, plus an arrow-key `/model` picker.
 - Verifiable provenance with `z0g attest`, and a **verifiable session**: `z0g share` (or `/share`) bundles the transcript + provenance and uploads it to **0G Storage**, returning a content root; `z0g share --anchor` writes that hash to **0G Chain** so the snapshot is timestamped and immutable. Verified on 0G mainnet.
 - Native on-chain actions, **off by default and opt-in** (enable with `--onchain`, `/onchain on`, or `ZOG_ONCHAIN=on`, plus a funded `ZOG_WALLET_KEY`): `upload_0g_storage` (publish to 0G Storage, returns a content root) and `deploy_0g_chain` (deploy a compiled contract, returns address + tx). When off, the agent is not offered these tools, so it never spends gas without your say-so. Both verified on 0G mainnet.
+- **Session INFT**: `z0g mint` (or `/mint`) turns a session into an ownable on-chain asset. It deploys a minimal ERC-721 (ERC-7857-inspired) once per project and mints a token whose `sessionRoot` records the session's 0G Storage content root, so ownership of a verifiable AI work session lives on 0G Chain. Verified on 0G mainnet (contract + token). Contract source in [contracts/Z0gSession.sol](contracts/Z0gSession.sol).
 - Bundled 0G skills the agent reads on demand to write correct 0G code.
 - **Media on 0G**: `generate_image` (and `z0g image "<prompt>" [out.png]`) creates PNGs with `z-image-turbo`; `transcribe_audio` (and `z0g transcribe <file>`) turns audio into text with `whisper-large-v3`. Same Router, same key, both private and verifiable on 0G.
 
@@ -121,10 +122,10 @@ npm run verify   # calls the Router directly, confirms tool-calling on the 0G co
 
 ## Roadmap
 
-Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified, opt-in), the verifiable session (`z0g share` to 0G Storage + `--anchor` on 0G Chain, mainnet-verified), parallel subagents, media on 0G (image + transcription), MCP both ways, the model catalog and arrow-key picker, and user skills.
+Shipped: streaming with markdown rendering, multiple chat sessions per project (resume picker with search), planning, slash commands, the goal loop and auto-verify, in-agent `deploy_0g_chain` and `upload_0g_storage` (mainnet-verified, opt-in), the verifiable session (`z0g share` to 0G Storage + `--anchor` on 0G Chain, mainnet-verified), the session INFT (`z0g mint`, mainnet-verified), parallel subagents, media on 0G (image + transcription), MCP both ways, the model catalog and arrow-key picker, and user skills.
 
 Next:
-- INFT mint (ERC-7857) for the verifiable session snapshot.
+- Full ERC-7857 (encrypted metadata + oracle transfer) on top of the current session INFT.
 - Full TEE-quote verification of the provenance manifest (not just model + response id).
 - Publish `z0gcode` to npm; a shareable starter pack of user skills.
 

@@ -14,7 +14,8 @@
   "files": [
     "bin",
     "src",
-    "skills"
+    "skills",
+    "contracts/Z0gSession.json"
   ],
   "scripts": {
     "start": "node bin/z0g.mjs",

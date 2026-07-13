@@ -42,6 +42,7 @@ function helpText() {
       ["z0g attest", "Show which 0G model wrote which change"],
       ["z0g undo", "Revert the file edits from the last turn"],
       ["z0g share", "Export a session to 0G Storage (--anchor for 0G Chain)"],
+      ["z0g mint", "Mint a session as an NFT on 0G Chain (ERC-7857-inspired)"],
     ]],
     ["Media", [
       ['z0g image "<prompt>"', "Generate an image on 0G (z-image-turbo), saved as PNG"],
@@ -95,6 +96,7 @@ const SLASH_COMMANDS = [
   ["/undo", "Revert the file edits from the last turn"],
   ["/checkpoints", "List the turns you can undo"],
   ["/share", "Export this session to 0G Storage (/share anchor to anchor on-chain)"],
+  ["/mint", "Mint this session as an NFT on 0G Chain (records its Storage root)"],
   ["/plan", "Show the current task checklist"],
   ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
   ["/goal", "Run until the verify command passes"],
@@ -390,16 +392,9 @@ async function cmdCheckpoints(flags, sessionId) {
   });
 }
 
-// Export a session (transcript + provenance) to 0G Storage, optionally anchoring
-// the content hash on 0G Chain, for a verifiable, shareable snapshot.
-async function cmdShare(flags, sessionId) {
-  const cwd = resolveCwd(flags);
-  await migrateLegacy(cwd);
-  const id = sessionId || mostRecent(cwd);
-  if (!id) { console.log(ui.warn("No session to share. Run a task first.")); return; }
-  const onchainOn = flags.onchain !== undefined ? flags.onchain : CONFIG.onchain;
-  if (!onchainOn) { console.log(ui.warn("On-chain is off. Enable it with --onchain, /onchain on, or ZOG_ONCHAIN=on.")); return; }
-  if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (a funded 0G mainnet key) to share on 0G.")); return; }
+// Build the shareable session bundle (title + transcript + provenance) and
+// write it to share-bundle.json. Returns { bundlePath, title }.
+function buildSessionBundle(cwd, id) {
   const dir = sessionDir(cwd, id);
   let sess = {};
   try { sess = JSON.parse(readFileSync(path.join(dir, "session.json"), "utf8")); } catch {}
@@ -414,8 +409,37 @@ async function cmdShare(flags, sessionId) {
   const bundlePath = path.join(dir, "share-bundle.json");
   mkdirSync(dir, { recursive: true });
   writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
+  return { bundlePath, title: bundle.session.title || id, ts: bundle.ts };
+}
 
-  console.log(ui.section("Share session", bundle.session.title || id));
+// Ensure the session has a 0G Storage root: reuse share.json or upload the
+// bundle. Returns { root, storageTx, cached }.
+async function ensureSessionRoot(cwd, id) {
+  const dir = sessionDir(cwd, id);
+  try {
+    const rec = JSON.parse(readFileSync(path.join(dir, "share.json"), "utf8"));
+    if (rec.root) return { root: rec.root, storageTx: rec.storageTx, cached: true };
+  } catch { /* not shared yet */ }
+  const { bundlePath, ts } = buildSessionBundle(cwd, id);
+  const { rootHash, txHash } = await uploadFileToStorage(bundlePath);
+  writeFileSync(path.join(dir, "share.json"), JSON.stringify({ id, root: rootHash, storageTx: txHash, ts }, null, 2));
+  return { root: rootHash, storageTx: txHash, cached: false };
+}
+
+// Export a session (transcript + provenance) to 0G Storage, optionally anchoring
+// the content hash on 0G Chain, for a verifiable, shareable snapshot.
+async function cmdShare(flags, sessionId) {
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  const id = sessionId || mostRecent(cwd);
+  if (!id) { console.log(ui.warn("No session to share. Run a task first.")); return; }
+  const onchainOn = flags.onchain !== undefined ? flags.onchain : CONFIG.onchain;
+  if (!onchainOn) { console.log(ui.warn("On-chain is off. Enable it with --onchain, /onchain on, or ZOG_ONCHAIN=on.")); return; }
+  if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (a funded 0G mainnet key) to share on 0G.")); return; }
+  const dir = sessionDir(cwd, id);
+  const { bundlePath, title, ts } = buildSessionBundle(cwd, id);
+
+  console.log(ui.section("Share session", title));
   ui.info("uploading the session to 0G Storage...");
   let root, storageTx;
   try {
@@ -423,7 +447,7 @@ async function cmdShare(flags, sessionId) {
   } catch (e) { console.log(ui.err("  upload failed: " + e.message)); return; }
   console.log("  " + ui.ok(ui.GLYPH.ok) + " 0G Storage root " + ui.strong(root));
   console.log("  " + ui.muted("    tx " + storageTx + "  ·  https://chainscan.0g.ai/tx/" + storageTx));
-  const record = { id, root, storageTx, ts: bundle.ts };
+  const record = { id, root, storageTx, ts };
   if (flags.anchor) {
     ui.info("anchoring the hash on 0G Chain...");
     try {
@@ -435,6 +459,56 @@ async function cmdShare(flags, sessionId) {
   }
   writeFileSync(path.join(dir, "share.json"), JSON.stringify(record, null, 2));
   console.log("\n  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Verifiable session snapshot on 0G. Saved to .z0g/sessions/" + id + "/share.json"));
+}
+
+// Mint the session as an NFT on 0G Chain: its token records the 0G Storage root
+// of the session bundle, so an AI work session becomes an ownable, provable
+// asset (ERC-721 based, ERC-7857-inspired).
+async function cmdMint(flags, sessionId) {
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  const id = sessionId || mostRecent(cwd);
+  if (!id) { console.log(ui.warn("No session to mint. Run a task first.")); return; }
+  const onchainOn = flags.onchain !== undefined ? flags.onchain : CONFIG.onchain;
+  if (!onchainOn) { console.log(ui.warn("On-chain is off. Enable it with --onchain, /onchain on, or ZOG_ONCHAIN=on.")); return; }
+  if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (a funded 0G mainnet key) to mint.")); return; }
+  const dir = sessionDir(cwd, id);
+
+  console.log(ui.section("Mint session INFT", id));
+  let root, storageTx;
+  ui.info("ensuring the session is on 0G Storage...");
+  try {
+    const r = await ensureSessionRoot(cwd, id);
+    root = r.root; storageTx = r.storageTx;
+    console.log("  " + ui.ok(ui.GLYPH.ok) + (r.cached ? " reusing" : " uploaded") + " 0G Storage root " + ui.strong(root));
+  } catch (e) { console.log(ui.err("  storage failed: " + e.message)); return; }
+
+  const meta = {
+    name: "z0gcode session " + root.slice(0, 10),
+    description: "A verifiable z0gcode session: transcript and provenance stored on 0G Storage, reasoning served by 0G Compute (TEE).",
+    session: id,
+    storage_root: root,
+    external_url: "https://chainscan.0g.ai/tx/" + storageTx,
+    attributes: [
+      { trait_type: "tool", value: "z0gcode" },
+      { trait_type: "backend", value: "0G Compute" },
+    ],
+  };
+  const uri = "data:application/json;base64," + Buffer.from(JSON.stringify(meta)).toString("base64");
+
+  ui.info("minting on 0G Chain...");
+  try {
+    const { mintSession } = await import("../src/inft.mjs");
+    const r = await mintSession(cwd, { root, uri });
+    if (r.deployed) {
+      console.log("  " + ui.ok(ui.GLYPH.ok) + " deployed Z0gSession " + ui.strong(r.contract));
+      console.log("  " + ui.muted("    tx " + r.deployTx + "  ·  https://chainscan.0g.ai/address/" + r.contract));
+    }
+    console.log("  " + ui.ok(ui.GLYPH.ok) + " minted token " + ui.strong("#" + r.tokenId) + ui.muted(" to " + r.owner));
+    console.log("  " + ui.muted("    tx " + r.txHash + "  ·  https://chainscan.0g.ai/tx/" + r.txHash));
+    writeFileSync(path.join(dir, "mint.json"), JSON.stringify({ id, contract: r.contract, tokenId: r.tokenId, txHash: r.txHash, block: r.block, root, ts: new Date().toISOString() }, null, 2) + "\n");
+    console.log("\n  " + ui.accent(ui.GLYPH.seal) + ui.muted(" This session is now an on-chain asset. Saved to .z0g/sessions/" + id + "/mint.json"));
+  } catch (e) { console.log(ui.err("  mint failed: " + e.message)); }
 }
 
 async function cmdDoctor() {
@@ -814,6 +888,10 @@ async function repl(flags) {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
         await cmdShare({ ...flags, anchor: /anchor/.test(arg) || flags.anchor, onchain: activeOnchain() }, sessionId);
       }
+      else if (cmd === "mint") {
+        if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
+        await cmdMint({ ...flags, onchain: activeOnchain() }, sessionId);
+      }
       else if (cmd === "init") await cmdInit({ ...flags, force: /force|-f/.test(arg) });
       else if (cmd === "undo") await cmdUndo(flags, sessionId);
       else if (cmd === "checkpoints") await cmdCheckpoints(flags, sessionId);
@@ -859,6 +937,7 @@ async function main() {
     if (sub === "undo") return await cmdUndo(flags);
     if (sub === "checkpoints") return await cmdCheckpoints(flags);
     if (sub === "share") return await cmdShare(flags);
+    if (sub === "mint") return await cmdMint(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();
     if (sub === "attest") {
