@@ -127,7 +127,7 @@ Shipped: streaming with markdown rendering, multiple chat sessions per project (
 
 Next:
 - **Share a session, three ways.** Today `z0g share` is a *private* backup: the bundle is encrypted to your wallet, so only you can `pull` it. The plan keeps that and adds two ways to actually hand a session to someone, without ever trusting the storage layer with a key:
-  - **Link sharing (MEGA style):** encrypt with a random key that lives only in the share link's fragment, `https://<domain>/s/<root>#k=<key>`. The key is never uploaded and never leaves the `#` fragment, so the ciphertext sitting on public 0G Storage is unreadable without the link. Public in reach, link-gated in access: no link, no read.
+  - **Link sharing:** encrypt with a random key that lives only in the share link's fragment, `https://<domain>/s/<root>#k=<key>`. The key is never uploaded and never leaves the `#` fragment, so the ciphertext sitting on public 0G Storage is unreadable without the link. Public in reach, link-gated in access: no link, no read.
   - **Addressed sharing:** `z0g share --to <recipient>`, end-to-end encrypted to a wallet (ECIES), resolved through a key-management layer, a custom domain or name registry, so you share to a handle instead of a raw `0x` address and key discovery and rotation are handled for you.
   - A **custom-domain web viewer** that pulls the ciphertext from 0G Storage and decrypts it in the browser using the fragment key (which, being after the `#`, never reaches the server), so a link recipient reads a session with nothing installed.
 
