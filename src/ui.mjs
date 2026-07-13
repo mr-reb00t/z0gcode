@@ -412,6 +412,26 @@ export function hud(model, usage, effort) {
   );
 }
 
+export function fmtTok(n) {
+  n = Number(n) || 0;
+  return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
+}
+
+// A divider shown just above the input prompt: a rule that separates each turn,
+// with the session status (model, effort, cumulative tokens, estimated cost)
+// right-aligned on it. The `z0g ›` prompt stays below it.
+export function sessionBar({ model, effort, inTok, outTok, cost }) {
+  const total = (Number(inTok) || 0) + (Number(outTok) || 0);
+  const parts = [];
+  if (model) parts.push(model);
+  if (effort) parts.push("effort " + effort);
+  parts.push(fmtTok(total) + " tok");
+  if (cost != null) parts.push("~$" + cost.toFixed(cost < 0.01 ? 4 : 3));
+  const status = parts.join("  ·  ");
+  const ruleW = Math.max(2, cols - vlen(status) - 4);
+  return muted(GLYPH.rule.repeat(ruleW) + "  " + status + " ");
+}
+
 // Compact plan header (printed repeatedly mid-run, so no rule).
 export function renderPlan(plan) {
   if (!Array.isArray(plan) || plan.length === 0) return;

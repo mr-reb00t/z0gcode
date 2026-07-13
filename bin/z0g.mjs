@@ -489,6 +489,9 @@ async function repl(flags) {
   let model = flags.model;
   let effort = flags.effort;
   let subagents = flags.subagents;
+  let sessTokens = { in: 0, out: 0 };
+  let priceMap = null;
+  fetchModels(client).then((all) => { priceMap = Object.fromEntries(all.map((m) => [m.id, m])); }).catch(() => {});
   const mcp = await loadMcp(cwd);
   if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
 
@@ -504,11 +507,23 @@ async function repl(flags) {
   const promptStr = ui.strong("z0g") + ui.accent(" " + ui.GLYPH.chevron) + " ";
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: promptStr, completer: slashCompleter });
   let pendingModels = null; // when set, the next line is a /model selection
+  const activeModel = () => model || CONFIG.model;
+  const activeEffort = () => (effort === "" ? null : (effort || CONFIG.effort));
+  const costOf = () => {
+    const m = priceMap && priceMap[activeModel()];
+    if (!m || m.inPerM == null) return null;
+    return (sessTokens.in / 1e6) * m.inPerM + (sessTokens.out / 1e6) * (m.outPerM || 0);
+  };
+  // Divider + session token/cost counter, then the z0g prompt.
+  const showPrompt = () => {
+    console.log(ui.sessionBar({ model: activeModel(), effort: activeEffort(), inTok: sessTokens.in, outTok: sessTokens.out, cost: costOf() }));
+    rl.prompt();
+  };
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
-  rl.prompt();
+  showPrompt();
   for await (const line of rl) {
     const input = line.trim();
-    if (!input) { pendingModels = null; rl.prompt(); continue; }
+    if (!input) { pendingModels = null; showPrompt(); continue; }
 
     // Resolve a pending /model pick (a slash command instead cancels it).
     if (pendingModels && !input.startsWith("/")) {
@@ -520,7 +535,7 @@ async function repl(flags) {
       else if (list.includes(input)) chosen = input;
       if (chosen) { model = chosen; saveSetting("model", chosen); console.log(ui.pickConfirm(chosen)); }
       else ui.info("model unchanged");
-      rl.prompt();
+      showPrompt();
       continue;
     }
     if (pendingModels) pendingModels = null;
@@ -637,14 +652,15 @@ async function repl(flags) {
         await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
       } else ui.info("unknown command; /help for the list");
-      rl.prompt();
+      showPrompt();
       continue;
     }
 
     const res = await runAgent({ client, task: input, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, history, mcp });
     history = res.messages;
+    if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
-    rl.prompt();
+    showPrompt();
   }
   rl.close();
   await pruneIfEmpty(sessionId);
