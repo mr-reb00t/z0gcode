@@ -70,6 +70,8 @@ z0g models                                               # rich table of 0G mode
 z0g skills                                               # list user/project skills (enable|disable)
 z0g doctor                                               # check key, connectivity, model
 z0g attest                                               # show which 0G model wrote which change
+z0g image "a flat blue rocket icon" rocket.png           # generate an image on 0G (z-image-turbo)
+z0g transcribe memo.mp3                                  # transcribe audio on 0G (whisper-large-v3)
 z0g serve --mcp                                          # expose z0gcode's 0G tools over MCP
 ```
 
