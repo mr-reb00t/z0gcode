@@ -8,6 +8,7 @@ import { exec } from "node:child_process";
 import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
 import { makeClient } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
+import { INIT_TASK } from "../src/context.mjs";
 import { runGoal } from "../src/goal.mjs";
 import { loadProvenance } from "../src/provenance.mjs";
 import {
@@ -30,6 +31,7 @@ function helpText() {
       ['z0g "<task>"', "Run a coding task (one-shot)"],
       ["z0g", "Interactive session (REPL, /help for commands)"],
       ['z0g goal "<obj>"', "Iterate until a verify command passes"],
+      ["z0g init", "Analyze the project and write an AGENTS.md context file"],
     ]],
     ["Inspect", [
       ["z0g models", "List the 0G models on the Router (add --json)"],
@@ -79,6 +81,7 @@ const SLASH_COMMANDS = [
   ["/chats", "Switch chat (arrow-key picker, search, rename, delete)"],
   ["/new", "Start a new chat (/new [title])"],
   ["/rename", "Rename the current chat (/rename <title>)"],
+  ["/init", "Analyze the project and write an AGENTS.md context file"],
   ["/model", "Pick the active 0G model (saved to settings)"],
   ["/effort", "Set reasoning effort (low|medium|high|default)"],
   ["/subagents", "Enable or disable parallel subagents (on|off)"],
@@ -232,6 +235,7 @@ function parse(argv) {
     else if (a === "--no-subagents") flags.subagents = false;
     else if (a === "--onchain") flags.onchain = true;
     else if (a === "--no-onchain") flags.onchain = false;
+    else if (a === "--force") flags.force = true;
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
     else if (a === "--cwd") flags.cwd = argv[++i];
@@ -317,6 +321,30 @@ async function cmdTranscribe(file, flags) {
   if (duration) meta.push(duration.toFixed(1) + "s");
   if (cost != null) meta.push("~$" + cost.toFixed(4));
   console.log(ui.muted("  · " + meta.join(" · ") + " · ") + ui.accent(ui.GLYPH.seal) + ui.muted(" 0G Compute (TEE)"));
+}
+
+// Generate an AGENTS.md by letting the agent analyze the project. The file is
+// then auto-loaded into the agent's context on subsequent runs.
+async function cmdInit(flags) {
+  const cwd = resolveCwd(flags);
+  const target = path.join(cwd, "AGENTS.md");
+  if (existsSync(target) && !flags.force) {
+    console.log(ui.warn("AGENTS.md already exists. Re-run `z0g init --force` to regenerate it."));
+    return;
+  }
+  console.log(ui.section("Init", "analyzing the project to write AGENTS.md"));
+  const res = await runAgent({
+    client: makeClient(), task: INIT_TASK, cwd,
+    sessionDir: path.join(cwd, ".z0g"), allowBash: false,
+    preferredModel: flags.model, preferredEffort: flags.effort,
+    preferredSubagents: false, preferredOnchain: false,
+  });
+  if (existsSync(target)) {
+    const lines = readFileSync(target, "utf8").split("\n").length;
+    console.log("\n  " + ui.ok(ui.GLYPH.ok) + " " + ui.strong("AGENTS.md") + ui.muted(" written (" + lines + " lines). It is auto-loaded into the agent's context from now on."));
+  } else {
+    console.log(ui.warn("The agent did not create AGENTS.md. " + (res?.finalText ? "It said: " + res.finalText.slice(0, 200) : "Try again or write it by hand.")));
+  }
 }
 
 // Export a session (transcript + provenance) to 0G Storage, optionally anchoring
@@ -725,6 +753,7 @@ async function repl(flags) {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
         await cmdShare({ ...flags, anchor: /anchor/.test(arg) || flags.anchor, onchain: activeOnchain() }, sessionId);
       }
+      else if (cmd === "init") await cmdInit({ ...flags, force: /force|-f/.test(arg) });
       else if (cmd === "plan") { const p = await loadPlan(sessionDirPath); if (p) ui.renderPlan(p); else ui.info("no plan yet"); }
       else if (cmd === "verify") await runVerify(cwd);
       else if (cmd === "goal") {
@@ -756,6 +785,7 @@ async function main() {
     if (sub === "models") return await cmdModels(flags);
     if (sub === "image") return await cmdImage(positional[1], positional[2], flags);
     if (sub === "transcribe") return await cmdTranscribe(positional[1], flags);
+    if (sub === "init") return await cmdInit(flags);
     if (sub === "share") return await cmdShare(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();

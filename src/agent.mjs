@@ -6,6 +6,7 @@ import { completeStream } from "./client.mjs";
 import { TOOL_DEFS, makeExecutor } from "./tools.mjs";
 import { SYSTEM_0G } from "./skills.mjs";
 import { skillsPromptBlock } from "./user-skills.mjs";
+import { contextPromptBlock } from "./context.mjs";
 import { makeProvenance } from "./provenance.mjs";
 import * as ui from "./ui.mjs";
 
@@ -25,7 +26,8 @@ function systemPrompt(cwd) {
     "",
     SYSTEM_0G,
     skillsPromptBlock(cwd),
-  ].join("\n");
+    contextPromptBlock(cwd),
+  ].filter(Boolean).join("\n");
 }
 
 function argSummary(name, args) {
