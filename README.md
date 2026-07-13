@@ -20,6 +20,10 @@
 
 Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infrastructure & Tooling).
 
+<p align="center">
+  <img src="assets/demo/z0g-demo.svg" alt="z0gcode writing and verifying isPrime(n) on 0G Compute, then attesting which model wrote it" width="760">
+</p>
+
 ```
   › read_skill chain
     ✓ skill: chain
