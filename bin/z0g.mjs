@@ -3,7 +3,7 @@
 import "../src/env.mjs"; // load .env before config reads process.env
 import readline from "node:readline";
 import path from "node:path";
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { exec } from "node:child_process";
 import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
 import { makeClient } from "../src/client.mjs";
@@ -23,7 +23,8 @@ import { saveSetting } from "../src/settings.mjs";
 import { fetchModels, orderChatModels } from "../src/models-info.mjs";
 import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
 import { generateImage, transcribeAudio } from "../src/media.mjs";
-import { uploadFileToStorage, anchorOnChain } from "../src/anchor.mjs";
+import { uploadFileToStorage, anchorOnChain, downloadAndVerify } from "../src/anchor.mjs";
+import { encryptEnvelope, decryptEnvelope } from "../src/crypto.mjs";
 import { arrowSelect } from "../src/prompt.mjs";
 import * as ui from "../src/ui.mjs";
 
@@ -41,7 +42,8 @@ function helpText() {
       ["z0g doctor", "Check your 0G setup (key, connectivity, model)"],
       ["z0g attest", "Show which 0G model wrote which change"],
       ["z0g undo", "Revert the file edits from the last turn"],
-      ["z0g share", "Export a session to 0G Storage (--anchor for 0G Chain)"],
+      ["z0g share", "Export a session to 0G Storage, encrypted (--anchor for 0G Chain)"],
+      ["z0g pull <root>", "Fetch, verify, and decrypt a shared session (--import)"],
       ["z0g mint", "Mint a session as an NFT on 0G Chain (ERC-7857-inspired)"],
     ]],
     ["Media", [
@@ -96,6 +98,7 @@ const SLASH_COMMANDS = [
   ["/undo", "Revert the file edits from the last turn"],
   ["/checkpoints", "List the turns you can undo"],
   ["/share", "Export this session to 0G Storage (/share anchor to anchor on-chain)"],
+  ["/pull", "Fetch + verify + decrypt a shared session (/pull <root> [import])"],
   ["/mint", "Mint this session as an NFT on 0G Chain (records its Storage root)"],
   ["/plan", "Show the current task checklist"],
   ["/verify", "Run the project's verify command (npm test / .z0g/verify)"],
@@ -246,6 +249,7 @@ function parse(argv) {
     else if (a === "--onchain") flags.onchain = true;
     else if (a === "--no-onchain") flags.onchain = false;
     else if (a === "--force") flags.force = true;
+    else if (a === "--import") flags.import = true;
     else if (a === "--verify") flags.verify = argv[++i];
     else if (a === "--max-steps") CONFIG.maxSteps = Number(argv[++i]) || CONFIG.maxSteps;
     else if (a === "--cwd") flags.cwd = argv[++i];
@@ -412,6 +416,16 @@ function buildSessionBundle(cwd, id) {
   return { bundlePath, title: bundle.session.title || id, ts: bundle.ts };
 }
 
+// Build the bundle and encrypt it for the wallet, returning the path to upload.
+// 0G Storage is public, so we only ever upload ciphertext.
+function encryptedBundlePath(cwd, id) {
+  const { bundlePath, title, ts } = buildSessionBundle(cwd, id);
+  const enc = encryptEnvelope(readFileSync(bundlePath), process.env.ZOG_WALLET_KEY);
+  const encPath = path.join(sessionDir(cwd, id), "share-bundle.enc");
+  writeFileSync(encPath, enc);
+  return { encPath, title, ts };
+}
+
 // Ensure the session has a 0G Storage root: reuse share.json or upload the
 // bundle. Returns { root, storageTx, cached }.
 async function ensureSessionRoot(cwd, id) {
@@ -420,9 +434,9 @@ async function ensureSessionRoot(cwd, id) {
     const rec = JSON.parse(readFileSync(path.join(dir, "share.json"), "utf8"));
     if (rec.root) return { root: rec.root, storageTx: rec.storageTx, cached: true };
   } catch { /* not shared yet */ }
-  const { bundlePath, ts } = buildSessionBundle(cwd, id);
-  const { rootHash, txHash } = await uploadFileToStorage(bundlePath);
-  writeFileSync(path.join(dir, "share.json"), JSON.stringify({ id, root: rootHash, storageTx: txHash, ts }, null, 2));
+  const { encPath, ts } = encryptedBundlePath(cwd, id);
+  const { rootHash, txHash } = await uploadFileToStorage(encPath);
+  writeFileSync(path.join(dir, "share.json"), JSON.stringify({ id, root: rootHash, storageTx: txHash, encrypted: true, ts }, null, 2));
   return { root: rootHash, storageTx: txHash, cached: false };
 }
 
@@ -437,17 +451,17 @@ async function cmdShare(flags, sessionId) {
   if (!onchainOn) { console.log(ui.warn("On-chain is off. Enable it with --onchain, /onchain on, or ZOG_ONCHAIN=on.")); return; }
   if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (a funded 0G mainnet key) to share on 0G.")); return; }
   const dir = sessionDir(cwd, id);
-  const { bundlePath, title, ts } = buildSessionBundle(cwd, id);
+  const { encPath, title, ts } = encryptedBundlePath(cwd, id);
 
   console.log(ui.section("Share session", title));
-  ui.info("uploading the session to 0G Storage...");
+  ui.info("encrypting for your wallet and uploading to 0G Storage...");
   let root, storageTx;
   try {
-    ({ rootHash: root, txHash: storageTx } = await uploadFileToStorage(bundlePath));
+    ({ rootHash: root, txHash: storageTx } = await uploadFileToStorage(encPath));
   } catch (e) { console.log(ui.err("  upload failed: " + e.message)); return; }
-  console.log("  " + ui.ok(ui.GLYPH.ok) + " 0G Storage root " + ui.strong(root));
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " 0G Storage root " + ui.strong(root) + ui.muted(" (encrypted)"));
   console.log("  " + ui.muted("    tx " + storageTx + "  ·  https://chainscan.0g.ai/tx/" + storageTx));
-  const record = { id, root, storageTx, ts };
+  const record = { id, root, storageTx, encrypted: true, ts };
   if (flags.anchor) {
     ui.info("anchoring the hash on 0G Chain...");
     try {
@@ -459,6 +473,52 @@ async function cmdShare(flags, sessionId) {
   }
   writeFileSync(path.join(dir, "share.json"), JSON.stringify(record, null, 2));
   console.log("\n  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Verifiable session snapshot on 0G. Saved to .z0g/sessions/" + id + "/share.json"));
+}
+
+// Pull a shared session back: download by its 0G Storage root, verify the root,
+// and decrypt with the wallet. Read-only (no gas); proves the round-trip and that
+// only the owner's wallet can read the content.
+async function cmdPull(flags, root) {
+  if (!root || !/^0x[0-9a-fA-F]{6,}$/.test(root)) { console.log(ui.warn("Usage: z0g pull <0G Storage content root> [--import]")); return; }
+  const cwd = resolveCwd(flags);
+  await migrateLegacy(cwd);
+  if (!process.env.ZOG_WALLET_KEY) { console.log(ui.warn("Set ZOG_WALLET_KEY (the wallet you shared with) to decrypt the session.")); return; }
+  console.log(ui.section("Pull session", root.slice(0, 18) + "…"));
+  const tmpDir = path.join(cwd, ".z0g", "tmp");
+  mkdirSync(tmpDir, { recursive: true });
+  const tmp = path.join(tmpDir, "pull-" + root.slice(2, 14) + ".enc");
+  try { rmSync(tmp, { force: true }); } catch {}
+  ui.info("downloading from 0G Storage and verifying the content root...");
+  try {
+    await downloadAndVerify(root, tmp);
+  } catch (e) { console.log(ui.err("  download/verify failed: " + e.message)); return; }
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " content root verified against 0G Storage");
+  let plain;
+  try {
+    plain = decryptEnvelope(readFileSync(tmp), process.env.ZOG_WALLET_KEY);
+  } catch (e) {
+    console.log("  " + ui.err(ui.GLYPH.no) + " " + e.message);
+    console.log("  " + ui.muted("The bytes are authentic, but only the owner's wallet can read them."));
+    try { rmSync(tmp, { force: true }); } catch {}
+    return;
+  }
+  console.log("  " + ui.ok(ui.GLYPH.ok) + " decrypted with your wallet");
+  let bundle;
+  try { bundle = JSON.parse(plain.toString("utf8")); } catch { console.log(ui.warn("  decrypted, but the bundle is not valid JSON")); try { rmSync(tmp, { force: true }); } catch {} return; }
+  const s = bundle.session || {};
+  const msgs = Array.isArray(s.messages) ? s.messages.length : 0;
+  const prov = (bundle.provenance && Array.isArray(bundle.provenance.entries)) ? bundle.provenance.entries.length : 0;
+  console.log("\n  " + ui.strong(s.title || s.id || "session"));
+  console.log("  " + ui.muted(msgs + " message(s) · " + prov + " recorded change(s) · from " + (bundle.tool || "?")));
+  if (flags.import) {
+    const created = await createSession(cwd, { title: s.title ? s.title + " (pulled)" : "pulled session" });
+    await saveMessages(cwd, created.id, s.messages || []);
+    console.log("\n  " + ui.ok(ui.GLYPH.ok) + " imported as a new chat: " + ui.strong(created.id));
+  } else {
+    console.log("\n  " + ui.muted("Add --import to load it as a new chat here."));
+  }
+  try { rmSync(tmp, { force: true }); } catch {}
+  console.log("  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Verifiable round-trip: fetched from 0G Storage, root-checked, decrypted."));
 }
 
 // Mint the session as an NFT on 0G Chain: its token records the 0G Storage root
@@ -896,6 +956,7 @@ async function repl(flags) {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
         await cmdMint({ ...flags, onchain: activeOnchain() }, sessionId);
       }
+      else if (cmd === "pull") await cmdPull({ ...flags, import: /import/.test(arg) }, rest[0]);
       else if (cmd === "init") await cmdInit({ ...flags, force: /force|-f/.test(arg) });
       else if (cmd === "undo") await cmdUndo(flags, sessionId);
       else if (cmd === "checkpoints") await cmdCheckpoints(flags, sessionId);
@@ -941,6 +1002,7 @@ async function main() {
     if (sub === "undo") return await cmdUndo(flags);
     if (sub === "checkpoints") return await cmdCheckpoints(flags);
     if (sub === "share") return await cmdShare(flags);
+    if (sub === "pull") return await cmdPull(flags, positional[1]);
     if (sub === "mint") return await cmdMint(flags);
     if (sub === "skills") return cmdSkills(resolveCwd(flags), positional.slice(1).join(" "));
     if (sub === "doctor") return await cmdDoctor();

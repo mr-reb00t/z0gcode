@@ -24,6 +24,17 @@ The generated config correctly set the non-obvious 0G requirement `evmVersion: "
 - Storage tx: [`0x06243e1c...c340a07f`](https://chainscan.0g.ai/tx/0x06243e1cd91bfe3108ac3364ef5498f89b23f25aebf1721e123bfe6bc340a07f)
 - Anchor tx (root written to 0G Chain, block 38686571): [`0xa2348022...8aa695d7`](https://chainscan.0g.ai/tx/0xa234802221353a12798087ee593fa390c49e9be46f1d453a11a7ef378aa695d7)
 
+### Privacy round-trip (encrypted, only the owner reads it)
+
+The bundle is encrypted client-side before upload, so 0G Storage being public does not expose it. Verified on mainnet with a real encrypted session (root `0x884b3378...2c20736b`):
+
+```
+z0g share --onchain            -> 0G Storage root ...2c20736b (encrypted)
+z0g pull <root>   (owner)      -> content root verified · decrypted with your wallet · 5 messages
+z0g pull <root>   (other key)  -> content root verified · decryption failed: encrypted for a different wallet
+```
+The non-owner still gets authentic, root-checked bytes; it just cannot read them. That is the point: public storage, private content.
+
 ## 4. Session INFT on 0G Chain (z0g mint)
 
 `z0g mint` deployed the session NFT (`contracts/Z0gSession.sol`) and minted a token bound to that Storage root:

@@ -30,6 +30,28 @@ export async function uploadFileToStorage(absPath) {
   }
 }
 
+// Download a file from 0G Storage by its content root, then verify the bytes
+// by recomputing the Merkle root and confirming it matches. Reading is free
+// (no wallet needed). Returns absOut. Throws on download error or root mismatch.
+export async function downloadAndVerify(root, absOut) {
+  const { ZgFile, Indexer } = await import("@0gfoundation/0g-storage-ts-sdk");
+  const indexer = new Indexer(indexerUrl());
+  const err = await indexer.download(root, absOut, true);
+  if (err) throw new Error(err.message || String(err));
+  const file = await ZgFile.fromFilePath(absOut);
+  try {
+    const [tree, treeErr] = await file.merkleTree();
+    if (treeErr) throw new Error(String(treeErr));
+    const got = tree.rootHash();
+    if (String(got).toLowerCase() !== String(root).toLowerCase()) {
+      throw new Error(`root mismatch: got ${got}, expected ${root}`);
+    }
+  } finally {
+    await file.close();
+  }
+  return absOut;
+}
+
 // Anchor a hash on 0G Chain via a small memo transaction. Returns { txHash, block }.
 export async function anchorOnChain(hash) {
   const key = requireKey();
