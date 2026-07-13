@@ -3,6 +3,7 @@
 <p align="center">
   <img src="assets/logo/z0gcode-banner.svg" alt="z0gcode: coding agent on 0G" width="480">
 </p>
+<p align="center"><sub>A barred zero: the circle is the <code>0</code> of 0G, the violet slash the <code>z</code> of z0g.</sub></p>
 
 <p align="center">
   <b>A terminal coding agent whose brain runs on <a href="https://0g.ai">0G Compute</a>.</b><br>
@@ -24,24 +25,12 @@ Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infr
   <img src="assets/demo/z0g-demo.svg" alt="z0gcode terminal auto-scrolling through six action sections: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session" width="820">
 </p>
 
-```
-  › read_skill chain
-    ✓ skill: chain
-  › write_file hardhat.config.js
-    ✓ wrote hardhat.config.js (674 bytes)
-
-Done. Configured for 0G Chain Mainnet: solidity 0.8.24, evmVersion "cancun"
-(required by 0G Chain), chainId 16661, PRIVATE_KEY read from env.
-```
-
-The mark is a barred zero: the circle is the `0` of 0G and the violet slash is the `z` of z0g.
-
 ## Why z0gcode
 
 Most coding agents ship your code and prompts to OpenAI or Anthropic. z0gcode sends them to **0G's decentralized, TEE-backed inference** instead, and three things follow, each carrying real weight:
 
 1. **Its brain runs on 0G.** Every reasoning step and tool call is served by the [0G Compute Router](https://docs.0g.ai/developer-hub/building-on-0g/compute-network/router/overview), private and verifiable (TEE), on 0G's own `0gm-1.0-35b-a3b` coding model. No OpenAI or Anthropic key, no data leaving to Big Tech, and open models at a fraction of the cost (compare with `z0g models`).
-2. **It is an expert at building on 0G.** It ships with bundled 0G skills (chain, compute, storage, network, security, testing), so it writes correct 0G code including the non-obvious bits. In the demo above it knew, unprompted, that 0G Chain contracts must compile with `evmVersion: "cancun"`.
+2. **It is an expert at building on 0G.** It ships with bundled 0G skills (chain, compute, storage, network, security, testing), so it writes correct 0G code including the non-obvious bits: for a 0G Chain deploy it sets, unprompted, the required `evmVersion: "cancun"`, Solidity `0.8.24`, and `chainId 16661` ([proof](docs/PROOF.md)).
 3. **It can prove which model wrote your code.** Because 0G inference is verifiable, `z0g attest` records a manifest binding each file change (before and after hash) to the exact 0G model, response id, and the on-chain **0G provider node address** that served it (captured from 0G's `x_0g_trace`). A closed-provider CLI cannot do this.
 
 The agent loop, tools, and CLI are original and dependency-light (one runtime dep). z0gcode is inspired by OpenCode and Claude Code; see [NOTICE](NOTICE).
@@ -119,7 +108,7 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 npm run verify   # calls the Router directly, confirms tool-calling on the 0G coding models
 ```
 
-`upload_0g_storage` and `deploy_0g_chain` were exercised against 0G **mainnet**. See [docs/PROOF.md](docs/PROOF.md) for a recorded end-to-end run and [docs/MODELS.md](docs/MODELS.md) for the model catalog.
+Every on-chain action, storage upload, chain deploy, the encrypted session `share` and its `--anchor`, `pull`, and the session INFT `mint`, was exercised against 0G **mainnet**. See [docs/PROOF.md](docs/PROOF.md) for the recorded runs with on-chain links, and [docs/MODELS.md](docs/MODELS.md) for the model catalog.
 
 ## Roadmap
 
