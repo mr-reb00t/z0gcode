@@ -586,10 +586,14 @@ async function printAttest(dir) {
     const after = String(e.sha256_after).slice(0, 12);
     const from = before.startsWith(EMPTY) ? "(new file)" : before;
     console.log("      " + ui.muted("hash   ") + ui.muted(from) + " " + ui.accent(ui.GLYPH.chevron) + " " + ui.muted(after));
+    if (e.tee_trace && e.tee_trace.provider) {
+      console.log("      " + ui.muted("0G node") + " " + ui.accent(e.tee_trace.provider) + ui.muted(e.tee_trace.request_id ? "  req " + e.tee_trace.request_id : ""));
+    }
     console.log("      " + ui.muted("signed " + e.ts + " · " + (e.response_id || "no response id")));
   }
   console.log("");
-  console.log("  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Model id + response id captured from 0G Compute (TEE)."));
+  const withNode = man.entries.filter((e) => e.tee_trace && e.tee_trace.provider).length;
+  console.log("  " + ui.accent(ui.GLYPH.seal) + ui.muted(" Model id, response id" + (withNode ? ", and the 0G provider node address" : "") + " captured from 0G Compute (TEE)."));
   console.log("  " + ui.muted("Full TEE-quote verification: roadmap."));
 }
 

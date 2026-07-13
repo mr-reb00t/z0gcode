@@ -15,13 +15,17 @@ export function makeProvenance(dir) {
   const file = MANIFEST(dir);
   const entries = [];
   return {
-    async record({ pathRel, before, after, model, responseId }) {
+    async record({ pathRel, before, after, model, responseId, trace }) {
+      // 0G returns an x_0g_trace with the on-chain provider node that served the
+      // request and a 0G request id: honest, verifiable TEE evidence.
+      const tee = trace ? { provider: trace.provider || null, request_id: trace.request_id || null } : null;
       entries.push({
         path: pathRel,
         sha256_before: sha256(before),
         sha256_after: sha256(after),
         model: model || "unknown",
         response_id: responseId || null,
+        tee_trace: tee,
         ts: new Date().toISOString(),
       });
       await fs.mkdir(path.dirname(file), { recursive: true });

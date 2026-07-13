@@ -42,6 +42,7 @@ export async function complete(client, { models, messages, tools, effort }) {
           usage: res.usage || null,
           responseId: res.id || null,
           systemFingerprint: res.system_fingerprint || null,
+          trace: res.x_0g_trace || null,
         };
       } catch (e) {
         lastErr = e;
@@ -84,9 +85,12 @@ export async function completeStream(client, { models, messages, tools, onDelta,
         const acc = [];
         let usage = null;
         let responseId = null;
+        let trace = null;
         for await (const chunk of stream) {
           if (chunk.id) responseId = responseId || chunk.id;
           if (chunk.usage) usage = chunk.usage;
+          if (chunk.x_0g_trace) trace = chunk.x_0g_trace; // 0G TEE trace: provider node + request id
+
           const delta = chunk.choices?.[0]?.delta;
           if (!delta) continue;
           if (delta.content) {
@@ -110,7 +114,7 @@ export async function completeStream(client, { models, messages, tools, onDelta,
         if (!hasContent && toolCalls.length === 0) throw new Error("empty stream");
         const message = { role: "assistant", content: content || null };
         if (toolCalls.length) message.tool_calls = toolCalls;
-        return { message, model, usage, responseId };
+        return { message, model, usage, responseId, trace };
       } catch (e) {
         lastErr = e;
         const status = e?.status;

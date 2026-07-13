@@ -42,7 +42,7 @@ Most coding agents ship your code and prompts to OpenAI or Anthropic. z0gcode se
 
 1. **Its brain runs on 0G.** Every reasoning step and tool call is served by the [0G Compute Router](https://docs.0g.ai/developer-hub/building-on-0g/compute-network/router/overview), private and verifiable (TEE), on 0G's own `0gm-1.0-35b-a3b` coding model. No OpenAI or Anthropic key, no data leaving to Big Tech, and open models at a fraction of the cost (compare with `z0g models`).
 2. **It is an expert at building on 0G.** It ships with bundled 0G skills (chain, compute, storage, network, security, testing), so it writes correct 0G code including the non-obvious bits. In the demo above it knew, unprompted, that 0G Chain contracts must compile with `evmVersion: "cancun"`.
-3. **It can prove which model wrote your code.** Because 0G inference is verifiable, `z0g attest` records a manifest binding each file change (before and after hash) to the exact 0G model and response id that produced it. A closed-provider CLI cannot do this.
+3. **It can prove which model wrote your code.** Because 0G inference is verifiable, `z0g attest` records a manifest binding each file change (before and after hash) to the exact 0G model, response id, and the on-chain **0G provider node address** that served it (captured from 0G's `x_0g_trace`). A closed-provider CLI cannot do this.
 
 The agent loop, tools, and CLI are original and dependency-light (one runtime dep). z0gcode is inspired by OpenCode and Claude Code; see [NOTICE](NOTICE).
 

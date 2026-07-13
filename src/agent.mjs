@@ -265,6 +265,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
             after: res.change.after,
             model: out.model,
             responseId: out.responseId,
+            trace: out.trace,
           });
           if (!isSubagent) {
             await recordCheckpoint(provDir, {
