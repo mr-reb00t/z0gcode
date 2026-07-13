@@ -21,7 +21,7 @@
 Built by **Andrei & Claude** for the 0G track at ETHGlobal Lisbon (Track 2: Infrastructure & Tooling).
 
 <p align="center">
-  <img src="assets/demo/z0g-demo.svg" alt="z0gcode writing and verifying isPrime(n) on 0G Compute, then attesting which model wrote it" width="760">
+  <img src="assets/demo/z0g-demo.svg" alt="z0gcode, sectioned by action: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session" width="820">
 </p>
 
 ```
