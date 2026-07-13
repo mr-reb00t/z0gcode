@@ -14,8 +14,8 @@ const W = 820, VIEW_TOP = 96, VIEW_H = 500, FOOT_H = 40;
 const H = VIEW_TOP + VIEW_H + FOOT_H;
 const BOTTOM = VIEW_H - 44;   // content-y that should sit near the viewport bottom
 // loop timing
-const LOOP_TAIL = 2.2;        // pause + clear before the loop restarts (slower, readable)
-const STAGGER = 0.34, CHUNK_DUR = 0.4, DIV_DUR = 0.42, SEC_GAP = 0.24;
+const LOOP_TAIL = 2.6;        // pause + clear before the loop restarts (slower, readable)
+const STAGGER = 0.5, CHUNK_DUR = 0.42, DIV_DUR = 0.46, SEC_GAP = 0.32;
 
 function txt(x, y, s, o = {}) {
   let a = `x="${x}" y="${y}"`;
@@ -34,7 +34,7 @@ const COL = { dot: 44, model: 60, ctx: 322, max: 402, in: 542, out: 636, save: 7
 
 const reveals = [];  // {begin, dur, inner} rendered as looping <g> inside the scroll area
 let y = 8;           // content cursor (content-y coords, 0-based)
-let t = 1.5;         // reveal-time cursor (after the command starts typing)
+let t = 2.5;         // reveal-time cursor (starts after the command finishes typing)
 const keys = [{ t: 0, y: 0 }]; // scroll keyframes {time, target content-y}
 
 function section({ idx, title, accent, echo, chunks }) {
@@ -158,7 +158,9 @@ section({
       { x: COL.save, s: "SAVE", fill: C.mut, size: 9.5, anchor: "end" },
     ])],
     [bandRow("0G NATIVE", C.vio, "in-house model"), zRow(NATIVE)],
-    [bandRow("VERIFIABLE · TEE", C.cyn, "TEE attestation on 0G Chain"), ...VER.map(zRow)],
+    [bandRow("VERIFIABLE · TEE", C.cyn, "TEE attestation on 0G Chain"), ...VER.slice(0, 4).map(zRow)],
+    [...VER.slice(4, 8).map(zRow)],
+    [...VER.slice(8).map(zRow)],
     [bandRow("OPEN · PROXIED", C.mut, "passthrough"), ...OPEN.map(zRow)],
     [lineRow([{ x: 44, s: "media: whisper-large-v3 · z-image-turbo priced per-call (see 02 · 03)", fill: C.mut, size: 9.5 }])],
   ],
@@ -206,16 +208,31 @@ const content = reveals.map(loopGroup).join("");
 
 // ---------------------------------------------------------------- assembly
 const cmd = "ship a landing page, make a hero image, and prove it on-chain";
+// Character-by-character typewriter for the command, re-typed every loop.
+function buildCommand(D) {
+  const N = cmd.length, cw = 8.4, x0 = 74, pad = 6;
+  const wVals = ["0", "0"], kt = ["0", (0.4 / D).toFixed(4)];
+  const xVals = [String(x0), String(x0)];
+  const typeStart = 0.4, typeDur = 1.9;
+  for (let i = 1; i <= N; i++) {
+    kt.push(((typeStart + (i / N) * typeDur) / D).toFixed(4));
+    wVals.push((i * cw + pad).toFixed(1));
+    xVals.push((x0 + i * cw).toFixed(1));
+  }
+  kt.push("1.0000"); wVals.push((N * cw + pad).toFixed(1)); xVals.push((x0 + N * cw).toFixed(1));
+  const ktS = kt.join(";");
+  const clip = `<clipPath id="type"><rect x="72" y="60" width="0" height="20"><animate attributeName="width" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${wVals.join(";")}"/></rect></clipPath>`;
+  const text = `<text x="74" y="74" font-size="14" fill="${C.text}" clip-path="url(#type)">${esc(cmd)}</text>`;
+  const caret = `<rect x="74" y="62" width="8" height="15" fill="${C.vio}"><animate attributeName="x" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${xVals.join(";")}"/><animate attributeName="opacity" dur="0.9s" repeatCount="indefinite" keyTimes="0;0.4;0.5;0.9;1" values="1;1;0;0;1"/></rect>`;
+  return [txt(24, 74, "z0g ›", { size: 14, fill: C.vio, bold: true }), clip, text, caret].join("\n  ");
+}
 const chrome = [
   rect(8, 8, 804, H - 16, C.bg, { rx: 10 }).replace("/>", ` stroke="#30363d"/>`),
   rect(8, 8, 804, 34, C.chrome, { rx: 10 }),
   rect(8, 30, 804, 12, C.chrome),
   circle(28, 25, 6, "#ff5f56"), circle(48, 25, 6, "#ffbd2e"), circle(68, 25, 6, "#27c93f"),
   txt(410, 30, "z0gcode · 0G Compute", { size: 13, fill: C.mut, anchor: "middle" }),
-  txt(24, 74, "z0g ›", { size: 14, fill: C.vio, bold: true }),
-  `<clipPath id="type"><rect x="72" y="60" width="0" height="20"><animate attributeName="width" begin="0.4s" dur="1.1s" from="0" to="540" fill="freeze"/></rect></clipPath>`,
-  `<text x="74" y="74" font-size="14" fill="${C.text}" clip-path="url(#type)">${esc(cmd)}</text>`,
-  `<rect x="74" y="62" width="8" height="15" fill="${C.vio}"><animate attributeName="x" begin="0.4s" dur="1.1s" from="74" to="590" fill="freeze"/><animate attributeName="opacity" begin="0.4s" dur="0.7s" values="1;0;1" repeatCount="2"/><animate attributeName="opacity" begin="1.5s" dur="1.1s" values="1;1;0;0;1" repeatCount="indefinite"/></rect>`,
+  buildCommand(D),
   line(8, 88, 812, 88, "#30363d", 1),
 ].join("\n  ");
 
