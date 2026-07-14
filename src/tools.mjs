@@ -247,8 +247,20 @@ function safeResolve(cwd, p) {
   return abs;
 }
 
-export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
+export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false, mode, approve }) {
   const planDir = sessionDir || path.join(cwd, ".z0g");
+  // Permission mode: "auto" runs everything, "ask" prompts via approve(), "plan"
+  // is read-only. Legacy callers pass allowBash -> auto/ask.
+  const effMode = mode || (allowBash ? "auto" : "ask");
+  const readOnly = effMode === "plan";
+  const planDeny = (what) => ({ ok: false, summary: "plan mode", content: `Read-only plan mode: I can explore and plan but will not ${what}. Switch with /mode auto or /mode ask to let me act.` });
+  // Approve a gated action (run_bash / on-chain). Returns true if allowed.
+  const permit = async (kind, desc) => {
+    if (readOnly) return false;
+    if (effMode === "auto") return true;
+    if (typeof approve === "function") return !!(await approve(kind, desc));
+    return false;
+  };
   return async function execute(name, args) {
     try {
       switch (name) {
@@ -263,6 +275,7 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
           return { ok: true, summary: `search "${args.query}" (${res.count})`, content: res.text };
         }
         case "write_file": {
+          if (readOnly) return planDeny("write files");
           const abs = safeResolve(cwd, args.path);
           let before = "", existed = true;
           try { before = await fs.readFile(abs, "utf8"); } catch { before = ""; existed = false; }
@@ -272,6 +285,7 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
           return { ok: true, summary: `wrote ${args.path} (${after.length} bytes)`, content: "OK", change: { path: args.path, before, after, created: !existed } };
         }
         case "edit_file": {
+          if (readOnly) return planDeny("edit files");
           const abs = safeResolve(cwd, args.path);
           const cur = await fs.readFile(abs, "utf8");
           if (!args.old_string || !cur.includes(args.old_string)) {
@@ -291,16 +305,23 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false }) {
           return { ok: true, summary: `list ${args.path || "."} (${lines.length})`, content: lines.join("\n") || "(empty)" };
         }
         case "run_bash": {
-          if (!allowBash) {
-            return { ok: false, summary: "bash denied", content: "run_bash is disabled. Re-run z0gcode with --auto to allow shell commands." };
+          if (readOnly) return planDeny("run commands");
+          if (!(await permit("run_bash", args.command))) {
+            return { ok: false, summary: "bash not allowed", content: effMode === "ask" ? "You declined this command." : "run_bash needs approval: run z0g interactively (mode ask) and approve it, or with --auto." };
           }
           const out = await runBash(args.command, cwd);
           return { ok: out.code === 0, summary: `bash exit ${out.code}`, content: out.text };
         }
         case "upload_0g_storage": {
+          if (onchain && !(await permit("on-chain", "upload to 0G Storage"))) {
+            return { ok: false, summary: "on-chain not allowed", content: readOnly ? "Read-only plan mode." : "You declined the on-chain action." };
+          }
           return await uploadToStorage(cwd, args.path, onchain);
         }
         case "deploy_0g_chain": {
+          if (onchain && !(await permit("on-chain", "deploy to 0G Chain"))) {
+            return { ok: false, summary: "on-chain not allowed", content: readOnly ? "Read-only plan mode." : "You declined the on-chain action." };
+          }
           return await deployToChain(cwd, args, onchain);
         }
         case "update_plan": {

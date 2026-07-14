@@ -61,7 +61,7 @@ npm install && npm link                # or run directly with: node bin/z0g.mjs
 
 ```bash
 z0g "add a /health endpoint to server.js and test it"   # one-shot task
-z0g --auto "scaffold a Fastify app and run it"           # --auto allows shell commands (on-chain is a separate --onchain opt-in)
+z0g --auto "scaffold a Fastify app and run it"           # auto mode: runs commands without asking (else it asks you first)
 z0g goal --auto "make the failing tests pass"            # iterate until a verify command passes
 z0g --continue "now add input validation"                # resume the most recent chat
 z0g --resume                                             # pick a chat to resume (arrow-key picker)
@@ -75,14 +75,15 @@ z0g transcribe memo.mp3                                  # transcribe audio on 0
 z0g serve --mcp                                          # expose z0gcode's 0G tools over MCP
 ```
 
-**In the REPL**, type `/` then **Tab** to autocomplete slash commands: `/chats`, `/new`, `/rename`, `/init`, `/goal`, `/model`, `/effort`, `/subagents`, `/onchain`, `/skills`, `/attest`, `/share`, `/pull`, `/mint`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/chats` opens an arrow-key session picker (type to search, `ctrl-r` rename, `ctrl-x` delete); `/new [title]` starts a chat and `/rename <title>` renames the current one. `/model` opens the model picker (saved to `~/.z0gcode/settings.json`); `/effort low|medium|high` (or `default`) tunes reasoning depth vs speed and cost; `/subagents on|off` toggles parallel subagents; `/onchain on|off` toggles gas-spending on-chain actions (off by default); `/skills` lists and toggles your skills; `/share [anchor]` exports the session (encrypted) to 0G Storage (and anchors it on 0G Chain), and `/pull <root>` fetches, verifies, and decrypts one back. A short intro animation and a "thinking on 0G" indicator play on a color TTY; set `Z0G_NO_ANIM=1` to disable. Each turn is separated by a divider carrying a running session token and cost counter.
+**In the REPL**, type `/` then **Tab** to autocomplete slash commands: `/chats`, `/new`, `/rename`, `/init`, `/goal`, `/mode`, `/model`, `/effort`, `/subagents`, `/onchain`, `/skills`, `/attest`, `/share`, `/pull`, `/mint`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/chats` opens an arrow-key session picker (type to search, `ctrl-r` rename, `ctrl-x` delete); `/new [title]` starts a chat and `/rename <title>` renames the current one. `/mode ask|auto|plan` switches the permission mode; `/model` opens the model picker (saved to `~/.z0gcode/settings.json`); `/effort low|medium|high` (or `default`) tunes reasoning depth vs speed and cost; `/subagents on|off` toggles parallel subagents; `/onchain on|off` toggles gas-spending on-chain actions (off by default); `/skills` lists and toggles your skills; `/share [anchor]` exports the session (encrypted) to 0G Storage (and anchors it on 0G Chain), and `/pull <root>` fetches, verifies, and decrypts one back. A short intro animation and a "thinking on 0G" indicator play on a color TTY; set `Z0G_NO_ANIM=1` to disable. Each turn is separated by a divider carrying a running session token and cost counter.
 
 **Options:** `--auto`, `--onchain`, `--continue`, `--resume`, `--new`, `--model <id>`, `--effort low|medium|high`, `--no-subagents`, `--verify "<cmd>"`, `--auto-verify`, `--max-steps <n>`, `--cwd <dir>`, and `--json` (with `models`).
 
 ## Features
 
 **The agent**
-- Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by `--auto`), `update_plan`, and `read_skill`.
+- Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by the permission mode below), `update_plan`, and `read_skill`.
+- **Permission modes** (`/mode`, like Claude Code): **ask** (default) prompts before each shell command and on-chain action (`y` / `n` / `a` = always), and "always" choices are remembered in `~/.z0gcode/settings.json` so it never asks again for that program; **auto** (`--auto`) runs without asking; **plan** is read-only, the agent explores and proposes a plan and touches nothing until you switch to ask or auto.
 - Colored diffs for every change, an inference HUD (tokens, answering model, `0G Compute (TEE)`), and a visible planning checklist on multi-step tasks.
 - Streaming answers rendered as terminal markdown (bold, headings, lists, tables, inline code, and syntax-highlighted code blocks for JS/TS, Python, Solidity, Go, Rust, shell, JSON, and more); piped output stays raw and greppable.
 - Multiple chats per project, each isolating its own history, plan, and provenance under `.z0g/sessions/`. On open, an arrow-key picker (with search, rename, delete) resumes a chat; `--continue` resumes the most recent, `--resume` shows the picker, `/chats` switches mid-session. Plus a goal loop (`z0g goal` re-runs until a verify command passes) and auto-verify.

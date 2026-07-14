@@ -19,7 +19,7 @@ import {
 } from "../src/sessions.mjs";
 import { loadPlan } from "../src/plan.mjs";
 import { loadMcp } from "../src/mcp.mjs";
-import { saveSetting } from "../src/settings.mjs";
+import { saveSetting, loadSettings } from "../src/settings.mjs";
 import { fetchModels, orderChatModels } from "../src/models-info.mjs";
 import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
 import { generateImage, transcribeAudio } from "../src/media.mjs";
@@ -54,7 +54,7 @@ function helpText() {
       ["z0g serve --mcp", "Expose z0gcode's 0G tools as an MCP server"],
     ]],
     ["Options", [
-      ["--auto", "Allow shell commands (run_bash)"],
+      ["--auto", "Start in auto mode (run commands without asking; else /mode ask prompts)"],
       ["--onchain", "Allow gas-spending on-chain actions (off by default)"],
       ["--continue", "Continue the saved session in this directory"],
       ["--model <id>", "Override the model (default " + CONFIG.model + ")"],
@@ -89,6 +89,7 @@ const SLASH_COMMANDS = [
   ["/rename", "Rename the current chat (/rename <title>)"],
   ["/init", "Analyze the project and write an AGENTS.md context file"],
   ["/model", "Pick the active 0G model (saved to settings)"],
+  ["/mode", "Permission mode: ask (approve each) | auto (run all) | plan (read-only)"],
   ["/effort", "Set reasoning effort (low|medium|high|default)"],
   ["/subagents", "Enable or disable parallel subagents (on|off)"],
   ["/onchain", "Enable or disable gas-spending on-chain actions (on|off)"],
@@ -761,6 +762,9 @@ async function repl(flags) {
   let effort = flags.effort;
   let subagents = flags.subagents;
   let onchain = flags.onchain;
+  // Permission mode: auto (run all) | ask (approve each) | plan (read-only).
+  let mode = flags.auto ? "auto" : "ask";
+  const allowedCmds = new Set(loadSettings(cwd).allowedCommands || []);
   let sessTokens = { in: 0, out: 0 };
   let priceMap = null;
   fetchModels(client).then((all) => { priceMap = Object.fromEntries(all.map((m) => [m.id, m])); }).catch(() => {});
@@ -782,6 +786,24 @@ async function repl(flags) {
   const activeModel = () => model || CONFIG.model;
   const activeEffort = () => (effort === "" ? null : (effort || CONFIG.effort));
   const activeOnchain = () => (onchain !== undefined ? onchain : CONFIG.onchain);
+  // Approve a gated action in "ask" mode. Remembers "always" choices in settings
+  // so it never asks again for that program (or for on-chain actions).
+  const approve = async (kind, desc) => {
+    const key = kind === "run_bash" ? "bash:" + (String(desc).trim().split(/\s+/)[0] || "?") : "@onchain";
+    if (allowedCmds.has(key)) return true;
+    rl.pause();
+    const label = kind === "run_bash" ? ui.strong(String(desc).slice(0, 80)) : "on-chain: " + desc;
+    console.log("\n  " + ui.warn(ui.uiTTY ? "▲" : "!") + "  " + (kind === "run_bash" ? "run " : "") + label);
+    const a = (await ask("     allow?  " + ui.accent("y") + "es  " + ui.accent("n") + "o  " + ui.accent("a") + "lways  ")).trim().toLowerCase();
+    rl.resume();
+    if (a === "a" || a === "always") {
+      allowedCmds.add(key);
+      saveSetting("allowedCommands", [...allowedCmds]);
+      ui.info("saved: won't ask again for " + (kind === "run_bash" ? key.slice(5) : "on-chain actions"));
+      return true;
+    }
+    return a === "y" || a === "yes";
+  };
   const costOf = () => {
     const m = priceMap && priceMap[activeModel()];
     if (!m || m.inPerM == null) return null;
@@ -799,13 +821,14 @@ async function repl(flags) {
   // Run one agent turn: hooks, the agent, then persist history + tokens.
   const runTurn = async (task) => {
     await runHooks(cwd, "preRun", hooks, flags.auto, task);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
     history = res.messages;
     if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
     await runHooks(cwd, "postRun", hooks, flags.auto, task);
   };
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
+  ui.info("mode: " + ui.strong(mode) + (mode === "ask" ? " (I ask before running commands)" : mode === "plan" ? " (read-only until you /mode auto)" : " (runs commands without asking)") + "  ·  /mode ask|auto|plan");
   if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
   if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
   // Blinking block cursor at the prompt (matches the demo); restore on any exit.
@@ -903,6 +926,18 @@ async function repl(flags) {
           console.log(ui.warn("usage: /onchain on|off"));
         }
       }
+      else if (cmd === "mode") {
+        const a = arg.toLowerCase().trim();
+        if (["ask", "auto", "plan"].includes(a)) {
+          mode = a;
+          const desc = a === "auto" ? "runs commands without asking" : a === "plan" ? "read-only: explores and plans, no writes or commands" : "asks before each command / on-chain action";
+          ui.info("mode: " + ui.strong(a) + "  ·  " + desc);
+        } else if (!a) {
+          ui.info("mode: " + ui.strong(mode) + "  ·  usage: /mode ask|auto|plan" + (allowedCmds.size ? "  ·  " + allowedCmds.size + " always-allowed" : ""));
+        } else {
+          console.log(ui.warn("usage: /mode ask|auto|plan"));
+        }
+      }
       else if (cmd === "skills") cmdSkills(cwd, arg);
       else if (cmd === "chats") {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
@@ -967,7 +1002,7 @@ async function repl(flags) {
         else { console.log(ui.section("Custom commands", customCmds.length + " loaded")); for (const c of customCmds) console.log("  " + ui.accent("/" + c.name) + "  " + ui.muted(c.description)); }
       }
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
       }
       else if (customMap[cmd]) {

@@ -57,22 +57,30 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredMode, approve, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
   const q = !!quiet;
   // "" means an explicit unset (use the model's own default); undefined falls back.
   const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
   const subOn = preferredSubagents !== undefined ? preferredSubagents : CONFIG.subagents;
   const onchainOn = preferredOnchain !== undefined ? preferredOnchain : CONFIG.onchain;
   const provDir = sessionDir || path.join(cwd, ".z0g");
-  const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir, onchain: onchainOn });
+  // Permission mode: auto | ask | plan. Legacy: allowBash -> auto, else ask.
+  const mode = preferredMode || (allowBash ? "auto" : "ask");
+  const canBash = mode !== "plan"; // shell available in auto/ask (gated at exec)
+  const execute = makeExecutor({ cwd, allowBash, sessionDir: provDir, onchain: onchainOn, mode, approve });
   // Restrict the toolset for subagents (read-only), and drop spawn_subagents when
   // it is a subagent (no recursion) or the toggle is off. Drop on-chain tools when
   // the on-chain toggle is off so the agent never proposes a gas-spending action.
   let baseTools = toolNames ? TOOL_DEFS.filter((t) => toolNames.includes(t.function.name)) : TOOL_DEFS;
   if (isSubagent || !subOn) baseTools = baseTools.filter((t) => t.function.name !== "spawn_subagents" && t.function.name !== "spawn_write_subagents");
-  // Write subagents edit files and run shell in worktrees, so require --auto.
-  if (!allowBash) baseTools = baseTools.filter((t) => t.function.name !== "spawn_write_subagents");
+  // Write subagents edit files and run shell in worktrees, so they need shell.
+  if (!canBash) baseTools = baseTools.filter((t) => t.function.name !== "spawn_write_subagents");
   if (!onchainOn) baseTools = baseTools.filter((t) => t.function.name !== "upload_0g_storage" && t.function.name !== "deploy_0g_chain");
+  // Plan mode is read-only: drop every acting tool so the agent explores and plans.
+  if (mode === "plan") {
+    const PLAN_TOOLS = new Set(["read_file", "search_files", "list_dir", "read_skill", "update_plan", "spawn_subagents"]);
+    baseTools = baseTools.filter((t) => PLAN_TOOLS.has(t.function.name));
+  }
   const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;
   const models = modelChain(preferredModel);
   const prov = makeProvenance(provDir);
