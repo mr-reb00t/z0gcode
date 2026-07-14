@@ -92,6 +92,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
 
   const recent = []; // circuit breaker on repeated identical tool calls
   const results = []; // no-progress breaker: repeated identical tool RESULTS
+  let loopEscalated = false; // escalate once on a spin before giving up
   const failCounts = {}; // per-tool failure counter, drives model escalation
   const escalateOn = preferredEscalate !== undefined ? preferredEscalate : CONFIG.escalate;
   const escalateAfter = CONFIG.escalateAfter;
@@ -301,7 +302,15 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
       const rkey = `${name}|${res.summary || ""}|${String(res.content ?? "").slice(0, 300)}`;
       results.push(rkey);
       if (results.length > 8) results.shift();
-      if (results.filter((k) => k === rkey).length >= 3) stuck = true;
+      const repeat = results.filter((k) => k === rkey).length;
+      // Spinning on the same result: it is usually a model limitation, so first
+      // escalate to a stronger model (and stay on it) to give it a chance to get
+      // unstuck; only give up and hand control back if it still makes no progress.
+      if (repeat === 2 && escalateOn && !loopEscalated && activeModel === models[0]) {
+        escalate = true; loopEscalated = true;
+        if (!q) ui.info("spinning on the same result: trying a stronger model");
+      }
+      if (repeat >= (escalateOn ? 4 : 3)) stuck = true;
     }
 
     if (stuck) {

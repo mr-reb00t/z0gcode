@@ -32,3 +32,10 @@ test("no-progress breaker stops a spinning agent well before maxSteps", async ()
   assert.match(res.finalText, /Stopped/i);
   assert.ok(res.steps <= 5, `stopped in ${res.steps} steps, expected <= 5`);
 });
+
+test("with escalation off it gives up sooner (at 3 repeats)", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "z0gloop-"));
+  const res = await runAgent({ client: loopingClient(), task: "spin", cwd, quiet: true, preferredMode: "auto", preferredEscalate: false });
+  assert.equal(res.ok, false);
+  assert.equal(res.steps, 3);
+});
