@@ -91,6 +91,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
     : [{ role: "system", content: systemPrompt(cwd) }, { role: "user", content: task }];
 
   const recent = []; // circuit breaker on repeated identical tool calls
+  const results = []; // no-progress breaker: repeated identical tool RESULTS
   const failCounts = {}; // per-tool failure counter, drives model escalation
   const escalateOn = preferredEscalate !== undefined ? preferredEscalate : CONFIG.escalate;
   const escalateAfter = CONFIG.escalateAfter;
@@ -160,6 +161,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
       return { ok: true, steps: step + 1, changes: prov.count(), messages, finalText, usageTotal };
     }
 
+    let stuck = false;
     for (const tc of toolCalls) {
       const name = tc.function?.name;
       const args = parseArgs(tc.function?.arguments);
@@ -292,6 +294,21 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
       }
 
       messages.push({ role: "tool", tool_call_id: tc.id, content: String(res.content ?? (res.ok ? "OK" : "ERROR")) });
+
+      // No-progress breaker: the same tool returning the same result repeatedly
+      // means the agent is spinning (e.g. re-checking a state only a human can
+      // change). Stop cleanly and hand control back, instead of burning steps.
+      const rkey = `${name}|${res.summary || ""}|${String(res.content ?? "").slice(0, 300)}`;
+      results.push(rkey);
+      if (results.length > 8) results.shift();
+      if (results.filter((k) => k === rkey).length >= 3) stuck = true;
+    }
+
+    if (stuck) {
+      finalText = "Stopped: I kept getting the same result without new progress. If this needs a manual step (a permission or setting change), do it and ask me again, or refine the task.";
+      if (!q) { ui.error("Stopped: no progress (same tool result 3 times)."); ui.assistant(finalText); }
+      usageTotal.total = usageTotal.prompt + usageTotal.completion;
+      return { ok: false, steps: step + 1, changes: prov.count(), messages, finalText, usageTotal };
     }
   }
 
