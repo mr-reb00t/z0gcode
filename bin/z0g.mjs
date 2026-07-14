@@ -1029,7 +1029,7 @@ async function main() {
   if (flags.version) {
     let v = "";
     try { v = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version; } catch {}
-    console.log("z0gcode " + (v || "0.2.0"));
+    console.log("z0gcode " + (v || "0.3.0"));
     return;
   }
 
