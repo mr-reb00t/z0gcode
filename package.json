@@ -1,6 +1,6 @@
 {
   "name": "z0gcode",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A terminal coding agent whose brain runs on 0G Compute: private, verifiable AI with on-chain provenance.",
   "type": "module",
   "bin": {
