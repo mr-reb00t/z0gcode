@@ -65,6 +65,15 @@ export const CONFIG = {
     if (e !== undefined) return e;
     return typeof settings.onchain === "boolean" ? settings.onchain : false;
   })(),
+
+  // Escalate to a stronger fallback model when a tool fails repeatedly. ON by
+  // default (env > settings > on); escalateAfter is the failure threshold.
+  escalate: (() => {
+    const e = boolOf(process.env.ZOG_ESCALATE);
+    if (e !== undefined) return e;
+    return typeof settings.escalate === "boolean" ? settings.escalate : true;
+  })(),
+  escalateAfter: Math.max(2, Number(process.env.ZOG_ESCALATE_AFTER || settings.escalateAfter || 3)),
 };
 
 export function modelChain(preferred) {

@@ -23,6 +23,11 @@ test("boolOf parses booleans and off-ish strings", () => {
   assert.equal(boolOf(""), undefined);
 });
 
+test("escalate config is present (boolean + a sane threshold)", () => {
+  assert.equal(typeof CONFIG.escalate, "boolean");
+  assert.ok(CONFIG.escalateAfter >= 2);
+});
+
 test("modelChain puts the preferred model first and dedupes fallbacks", () => {
   const chain = modelChain(CONFIG.fallbacks[0]);
   assert.equal(chain[0], CONFIG.fallbacks[0]);

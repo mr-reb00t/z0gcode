@@ -60,6 +60,7 @@ function helpText() {
       ["--model <id>", "Override the model (default " + CONFIG.model + ")"],
       ["--effort <l>", "Reasoning effort: low, medium, high (default: model's own)"],
       ["--no-subagents", "Disable parallel subagents for this run"],
+      ["--no-escalate", "Do not switch to a stronger model on repeated tool failures"],
       ['--verify "<cmd>"', "Run, then verify and self-correct with this command"],
       ["--auto-verify", "Same, auto-detecting the verify command"],
       ["--max-steps <n>", "Max agent steps (default " + CONFIG.maxSteps + ")"],
@@ -93,6 +94,7 @@ const SLASH_COMMANDS = [
   ["/effort", "Set reasoning effort (low|medium|high|default)"],
   ["/subagents", "Enable or disable parallel subagents (on|off)"],
   ["/onchain", "Enable or disable gas-spending on-chain actions (on|off)"],
+  ["/escalate", "Toggle switching to a stronger model on repeated failures (on|off)"],
   ["/skills", "List skills; /skills enable|disable <name>"],
   ["/commands", "List project custom commands (.z0g/commands/*.md)"],
   ["/attest", "Show the provenance manifest"],
@@ -249,6 +251,7 @@ function parse(argv) {
     else if (a === "--no-subagents") flags.subagents = false;
     else if (a === "--onchain") flags.onchain = true;
     else if (a === "--no-onchain") flags.onchain = false;
+    else if (a === "--no-escalate") flags.escalate = false;
     else if (a === "--force") flags.force = true;
     else if (a === "--import") flags.import = true;
     else if (a === "--verify") flags.verify = argv[++i];
@@ -714,13 +717,13 @@ async function runTask(task, flags) {
     // Auto-verify: a normal run becomes self-correcting when a verify command is present.
     const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
     if (verifyCmd) {
-      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, verifyCmd, maxIters: 3, history: opened.history });
+      await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, verifyCmd, maxIters: 3, history: opened.history });
       return;
     }
     const client = makeClient();
     const mcp = await loadMcp(cwd);
     if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, history: opened.history, mcp });
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, history: opened.history, mcp });
     if (res?.messages) await saveMessages(cwd, sessionId, res.messages);
     await mcp?.close();
   } finally {
@@ -743,7 +746,7 @@ async function cmdGoal(objective, flags) {
   try {
     const verifyCmd = flags.verify || detectVerifyCmd(cwd);
     if (!flags.auto) ui.info("tip: run goal with --auto so the agent can run and verify its own work.");
-    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, verifyCmd, maxIters: 3, history: opened.history });
+    await runGoal({ client, objective, cwd, sessionId: opened.id, sessionDir: opened.dir, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, verifyCmd, maxIters: 3, history: opened.history });
   } finally {
     process.removeListener("SIGINT", onSig);
     pruneEmptySync(cwd, opened.id);
@@ -762,6 +765,7 @@ async function repl(flags) {
   let effort = flags.effort;
   let subagents = flags.subagents;
   let onchain = flags.onchain;
+  let escalate = flags.escalate;
   // Permission mode: auto (run all) | ask (approve each) | plan (read-only).
   let mode = flags.auto ? "auto" : "ask";
   const allowedCmds = new Set(loadSettings(cwd).allowedCommands || []);
@@ -786,6 +790,7 @@ async function repl(flags) {
   const activeModel = () => model || CONFIG.model;
   const activeEffort = () => (effort === "" ? null : (effort || CONFIG.effort));
   const activeOnchain = () => (onchain !== undefined ? onchain : CONFIG.onchain);
+  const activeEscalate = () => (escalate !== undefined ? escalate : CONFIG.escalate);
   // Approve a gated action in "ask" mode. Remembers "always" choices in settings
   // so it never asks again for that program (or for on-chain actions).
   const approve = async (kind, desc) => {
@@ -821,7 +826,7 @@ async function repl(flags) {
   // Run one agent turn: hooks, the agent, then persist history + tokens.
   const runTurn = async (task) => {
     await runHooks(cwd, "preRun", hooks, flags.auto, task);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), history, mcp });
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), history, mcp });
     history = res.messages;
     if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
@@ -926,6 +931,17 @@ async function repl(flags) {
           console.log(ui.warn("usage: /onchain on|off"));
         }
       }
+      else if (cmd === "escalate") {
+        const a = arg.toLowerCase().trim();
+        if (a === "on" || a === "off") {
+          escalate = a === "on"; saveSetting("escalate", escalate);
+          ui.info("escalate " + (escalate ? "on" : "off") + " (saved)" + (escalate ? "  ·  switches to a stronger model after " + CONFIG.escalateAfter + " tool failures" : "  ·  stays on the chosen model"));
+        } else if (!a) {
+          ui.info("escalate: " + (activeEscalate() ? "on" : "off") + "  ·  after " + CONFIG.escalateAfter + " failures  ·  usage: /escalate on|off");
+        } else {
+          console.log(ui.warn("usage: /escalate on|off"));
+        }
+      }
       else if (cmd === "mode") {
         const a = arg.toLowerCase().trim();
         if (["ask", "auto", "plan"].includes(a)) {
@@ -1002,7 +1018,7 @@ async function repl(flags) {
         else { console.log(ui.section("Custom commands", customCmds.length + " loaded")); for (const c of customCmds) console.log("  " + ui.accent("/" + c.name) + "  " + ui.muted(c.description)); }
       }
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
         history = await readMessages(cwd, sessionId) || history;
       }
       else if (customMap[cmd]) {

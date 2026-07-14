@@ -57,7 +57,7 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredMode, approve, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredMode, approve, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, preferredEscalate, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
   const q = !!quiet;
   // "" means an explicit unset (use the model's own default); undefined falls back.
   const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
@@ -92,6 +92,8 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
 
   const recent = []; // circuit breaker on repeated identical tool calls
   const failCounts = {}; // per-tool failure counter, drives model escalation
+  const escalateOn = preferredEscalate !== undefined ? preferredEscalate : CONFIG.escalate;
+  const escalateAfter = CONFIG.escalateAfter;
   let escalate = false;
   let activeModel = models[0];
   const usageTotal = { prompt: 0, completion: 0, total: 0 };
@@ -286,7 +288,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
         }
       } else {
         failCounts[name] = (failCounts[name] || 0) + 1;
-        if (failCounts[name] >= 2) escalate = true; // stuck on this tool: try a stronger model
+        if (escalateOn && failCounts[name] >= escalateAfter) escalate = true; // stuck on this tool: try a stronger model
       }
 
       messages.push({ role: "tool", tool_call_id: tc.id, content: String(res.content ?? (res.ok ? "OK" : "ERROR")) });
