@@ -78,7 +78,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
   if (!onchainOn) baseTools = baseTools.filter((t) => t.function.name !== "upload_0g_storage" && t.function.name !== "deploy_0g_chain");
   // Plan mode is read-only: drop every acting tool so the agent explores and plans.
   if (mode === "plan") {
-    const PLAN_TOOLS = new Set(["read_file", "search_files", "list_dir", "read_skill", "update_plan", "spawn_subagents"]);
+    const PLAN_TOOLS = new Set(["read_file", "search_files", "list_dir", "read_skill", "update_plan", "spawn_subagents", "web_search", "web_fetch"]);
     baseTools = baseTools.filter((t) => PLAN_TOOLS.has(t.function.name));
   }
   const toolSet = !isSubagent && mcp?.tools?.length ? [...baseTools, ...mcp.tools] : baseTools;

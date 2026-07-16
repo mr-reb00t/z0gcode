@@ -66,6 +66,7 @@ z0g goal --auto "make the failing tests pass"            # iterate until a verif
 z0g --continue "now add input validation"                # resume the most recent chat
 z0g --resume                                             # pick a chat to resume (arrow-key picker)
 z0g                                                      # interactive session (picks a chat if the project has any)
+z0g "add a /health endpoint" --json                      # headless: emit the run result as JSON (for CI/scripts)
 z0g models                                               # rich table of 0G models (add --json)
 z0g skills                                               # list user/project skills (enable|disable)
 z0g doctor                                               # check key, connectivity, model
@@ -77,12 +78,13 @@ z0g serve --mcp                                          # expose z0gcode's 0G t
 
 **In the REPL**, type `/` then **Tab** to autocomplete slash commands: `/chats`, `/new`, `/rename`, `/init`, `/goal`, `/mode`, `/model`, `/effort`, `/subagents`, `/onchain`, `/skills`, `/attest`, `/share`, `/pull`, `/mint`, `/plan`, `/verify`, `/clear`, `/help`, `/exit`. `/chats` opens an arrow-key session picker (type to search, `ctrl-r` rename, `ctrl-x` delete); `/new [title]` starts a chat and `/rename <title>` renames the current one. `/mode ask|auto|plan` switches the permission mode; `/model` opens the model picker (saved to `~/.z0gcode/settings.json`); `/effort low|medium|high` (or `default`) tunes reasoning depth vs speed and cost; `/subagents on|off` toggles parallel subagents; `/onchain on|off` toggles gas-spending on-chain actions (off by default); `/escalate on|off` toggles switching to a stronger model on repeated failures; `/skills` lists and toggles your skills; `/share [anchor]` exports the session (encrypted) to 0G Storage (and anchors it on 0G Chain), and `/pull <root>` fetches, verifies, and decrypts one back. A short intro animation and a "thinking on 0G" indicator play on a color TTY; set `Z0G_NO_ANIM=1` to disable. Each turn is separated by a divider carrying a running session token and cost counter.
 
-**Options:** `--auto`, `--onchain`, `--continue`, `--resume`, `--new`, `--model <id>`, `--effort low|medium|high`, `--no-subagents`, `--verify "<cmd>"`, `--auto-verify`, `--max-steps <n>`, `--cwd <dir>`, and `--json` (with `models`).
+**Options:** `--auto`, `--onchain`, `--continue`, `--resume`, `--new`, `--model <id>`, `--effort low|medium|high`, `--no-subagents`, `--verify "<cmd>"`, `--auto-verify`, `--max-steps <n>`, `--cwd <dir>`, and `--json` (headless: with a task it emits the run result, files changed, and provenance as JSON; with `models` it emits the catalog).
 
 ## Features
 
 **The agent**
-- Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by the permission mode below), `update_plan`, and `read_skill`.
+- Agentic loop with tools: `search_files` (regex + glob), `read_file`, `write_file`, `edit_file`, `list_dir`, `run_bash` (gated by the permission mode below), `update_plan`, `read_skill`, and `web_search` / `web_fetch`.
+- **Web tools**: `web_search` (top results from DuckDuckGo, no API key) and `web_fetch` (read a URL as text) let the agent look up current docs and APIs instead of guessing; gated by the permission mode, and available in `plan` mode for research.
 - **Permission modes** (`/mode`, like Claude Code): **ask** (default) prompts before each shell command and on-chain action (`y` / `n` / `a` = always), and "always" choices are remembered in `~/.z0gcode/settings.json` so it never asks again for that program; **auto** (`--auto`) runs without asking; **plan** is read-only, the agent explores and proposes a plan and touches nothing until you switch to ask or auto.
 - Colored diffs for every change, an inference HUD (tokens, answering model, `0G Compute (TEE)`), and a visible planning checklist on multi-step tasks.
 - Streaming answers rendered as terminal markdown (bold, headings, lists, tables, inline code, and syntax-highlighted code blocks for JS/TS, Python, Solidity, Go, Rust, shell, JSON, and more); piped output stays raw and greppable.

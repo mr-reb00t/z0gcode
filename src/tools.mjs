@@ -7,6 +7,7 @@ import { discoverSkills, readUserSkill } from "./user-skills.mjs";
 import { savePlan } from "./plan.mjs";
 import { makeClient } from "./client.mjs";
 import { generateImage, transcribeAudio } from "./media.mjs";
+import { webFetch, webSearch } from "./web.mjs";
 import { uploadFileToStorage } from "./anchor.mjs";
 
 const MAX_READ = 200_000; // chars
@@ -236,6 +237,30 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Search the web and get back the top results (title, URL, snippet). Use it to find current docs, API references, error messages, or library usage before writing code, instead of guessing. Follow up with web_fetch to read a promising result.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "The search query." } },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_fetch",
+      description: "Fetch a URL and return its readable text content (HTML is converted to text). Use it to read documentation, an API reference, a README, or a page found via web_search.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "The URL to fetch (https)." } },
+        required: ["url"],
+      },
+    },
+  },
 ];
 
 function safeResolve(cwd, p) {
@@ -365,6 +390,18 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false, mode
           const { text, cost } = await transcribeAudio(makeClient(), abs);
           const costStr = cost != null ? ` (~$${cost.toFixed(4)})` : "";
           return { ok: true, summary: `transcribed ${path.basename(abs)}${costStr}`, content: text || "(empty transcript)" };
+        }
+        case "web_search": {
+          if (!readOnly && !(await permit("web", "search: " + (args.query || "")))) {
+            return { ok: false, summary: "web not allowed", content: effMode === "ask" ? "You declined the web search." : "web_search needs approval (run in ask mode) or --auto." };
+          }
+          return await webSearch(args.query || "");
+        }
+        case "web_fetch": {
+          if (!readOnly && !(await permit("web", "fetch " + (args.url || "")))) {
+            return { ok: false, summary: "web not allowed", content: effMode === "ask" ? "You declined the web request." : "web_fetch needs approval (run in ask mode) or --auto." };
+          }
+          return await webFetch(args.url || "");
         }
         default:
           return { ok: false, summary: `unknown tool ${name}`, content: `No such tool: ${name}` };

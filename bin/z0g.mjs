@@ -65,6 +65,7 @@ function helpText() {
       ["--auto-verify", "Same, auto-detecting the verify command"],
       ["--max-steps <n>", "Max agent steps (default " + CONFIG.maxSteps + ")"],
       ["--cwd <dir>", "Working directory (default: current)"],
+      ["--json", "Headless: emit the run result (files, provenance, usage) as JSON"],
     ]],
     ["Setup", [
       ["ZOG_API_KEY", "Your 0G Router key (env or .env). Get one at https://pc.0g.ai"],
@@ -716,16 +717,33 @@ async function runTask(task, flags) {
   try {
     // Auto-verify: a normal run becomes self-correcting when a verify command is present.
     const verifyCmd = flags.verify || (flags.autoVerify ? detectVerifyCmd(cwd) : null);
-    if (verifyCmd) {
+    if (verifyCmd && !flags.json) {
       await runGoal({ client: makeClient(), objective: task, cwd, sessionId, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, verifyCmd, maxIters: 3, history: opened.history });
       return;
     }
     const client = makeClient();
     const mcp = await loadMcp(cwd);
-    if (mcp?.count) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, history: opened.history, mcp });
+    if (mcp?.count && !flags.json) ui.info(`MCP: ${mcp.count} tool(s) from configured servers`);
+    let lastModel = flags.model || CONFIG.model;
+    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, allowBash: flags.auto, preferredModel: flags.model, preferredEffort: flags.effort, preferredSubagents: flags.subagents, preferredOnchain: flags.onchain, preferredEscalate: flags.escalate, onModel: (m) => { lastModel = m; }, quiet: !!flags.json, history: opened.history, mcp });
     if (res?.messages) await saveMessages(cwd, sessionId, res.messages);
     await mcp?.close();
+    if (flags.json) {
+      // Headless: emit the run result as JSON (only JSON on stdout), for CI/scripts.
+      const man = await loadProvenance(sessionDirPath);
+      const entries = Array.isArray(man?.entries) ? man.entries : [];
+      const out = {
+        ok: !!res?.ok,
+        steps: res?.steps ?? null,
+        model: lastModel,
+        finalText: res?.finalText || "",
+        files: [...new Set(entries.map((e) => e.path))],
+        changes: entries.map((e) => ({ path: e.path, model: e.model, node: e.tee_trace?.provider || null })),
+        usage: res?.usageTotal ? { prompt: res.usageTotal.prompt, completion: res.usageTotal.completion, total: res.usageTotal.total } : null,
+        session: sessionId,
+      };
+      console.log(JSON.stringify(out, null, 2));
+    }
   } finally {
     process.removeListener("SIGINT", onSig);
     pruneEmptySync(cwd, sessionId); // drop a session that produced no messages
@@ -794,17 +812,17 @@ async function repl(flags) {
   // Approve a gated action in "ask" mode. Remembers "always" choices in settings
   // so it never asks again for that program (or for on-chain actions).
   const approve = async (kind, desc) => {
-    const key = kind === "run_bash" ? "bash:" + (String(desc).trim().split(/\s+/)[0] || "?") : "@onchain";
+    const key = kind === "run_bash" ? "bash:" + (String(desc).trim().split(/\s+/)[0] || "?") : kind === "web" ? "@web" : "@onchain";
     if (allowedCmds.has(key)) return true;
     rl.pause();
-    const label = kind === "run_bash" ? ui.strong(String(desc).slice(0, 80)) : "on-chain: " + desc;
-    console.log("\n  " + ui.warn(ui.uiTTY ? "▲" : "!") + "  " + (kind === "run_bash" ? "run " : "") + label);
+    const label = kind === "run_bash" ? "run " + ui.strong(String(desc).slice(0, 80)) : kind === "web" ? "web: " + String(desc).slice(0, 80) : "on-chain: " + desc;
+    console.log("\n  " + ui.warn(ui.uiTTY ? "▲" : "!") + "  " + label);
     const a = (await ask("     allow?  " + ui.accent("y") + "es  " + ui.accent("n") + "o  " + ui.accent("a") + "lways  ")).trim().toLowerCase();
     rl.resume();
     if (a === "a" || a === "always") {
       allowedCmds.add(key);
       saveSetting("allowedCommands", [...allowedCmds]);
-      ui.info("saved: won't ask again for " + (kind === "run_bash" ? key.slice(5) : "on-chain actions"));
+      ui.info("saved: won't ask again for " + (kind === "run_bash" ? key.slice(5) : kind === "web" ? "web requests" : "on-chain actions"));
       return true;
     }
     return a === "y" || a === "yes";
@@ -1092,7 +1110,7 @@ async function main() {
       console.log(helpText());
       return;
     }
-    ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);
+    if (!flags.json) ui.banner(flags.model || CONFIG.model, CONFIG.baseURL);
     await runTask(task, flags);
   } catch (e) {
     ui.error(e.message);
