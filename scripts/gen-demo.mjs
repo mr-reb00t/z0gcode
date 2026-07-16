@@ -9,10 +9,12 @@ const C = { bg: "#0d1017", chrome: "#161b22", rule: "#1f2630", text: "#c9d1d9", 
 const TIER = { priv: C.vio, ver: C.cyn, open: C.mut };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// viewport / window geometry
-const W = 820, VIEW_TOP = 96, VIEW_H = 500, FOOT_H = 40;
-const H = VIEW_TOP + VIEW_H + FOOT_H;
-const BOTTOM = VIEW_H - 44;   // content-y that should sit near the viewport bottom
+// viewport / window geometry: content scrolls above a pinned input box, matching
+// the app's fixed-bottom TUI (framed prompt + status bar).
+const W = 820, VIEW_TOP = 52, VIEW_H = 492;
+const BOX_TOP = 552, BOX_H = 62, BOX_BOT = BOX_TOP + BOX_H; // pinned input box
+const H = 650;
+const BOTTOM = VIEW_H - 40;   // content-y that should sit near the viewport bottom
 // loop timing
 const LOOP_TAIL = 2.6;        // pause + clear before the loop restarts (slower, readable)
 const STAGGER = 0.5, CHUNK_DUR = 0.42, DIV_DUR = 0.46, SEC_GAP = 0.32;
@@ -208,9 +210,9 @@ const content = reveals.map(loopGroup).join("");
 
 // ---------------------------------------------------------------- assembly
 const cmd = "ship a landing page, make a hero image, and prove it on-chain";
-// Character-by-character typewriter for the command, re-typed every loop.
+// Character-by-character typewriter for the command, typed inside the pinned box.
 function buildCommand(D) {
-  const N = cmd.length, cw = 8.4, x0 = 74, pad = 6;
+  const N = cmd.length, cw = 8.4, promptX = 32, x0 = 82, pad = 6, y = BOX_TOP + 26;
   const wVals = ["0", "0"], kt = ["0", (0.4 / D).toFixed(4)];
   const xVals = [String(x0), String(x0)];
   const typeStart = 0.4, typeDur = 1.9;
@@ -221,10 +223,32 @@ function buildCommand(D) {
   }
   kt.push("1.0000"); wVals.push((N * cw + pad).toFixed(1)); xVals.push((x0 + N * cw).toFixed(1));
   const ktS = kt.join(";");
-  const clip = `<clipPath id="type"><rect x="72" y="60" width="0" height="20"><animate attributeName="width" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${wVals.join(";")}"/></rect></clipPath>`;
-  const text = `<text x="74" y="74" font-size="14" fill="${C.text}" clip-path="url(#type)">${esc(cmd)}</text>`;
-  const caret = `<rect x="74" y="62" width="8" height="15" fill="${C.vio}"><animate attributeName="x" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${xVals.join(";")}"/><animate attributeName="opacity" dur="0.9s" repeatCount="indefinite" keyTimes="0;0.4;0.5;0.9;1" values="1;1;0;0;1"/></rect>`;
-  return [txt(24, 74, "z0g ›", { size: 14, fill: C.vio, bold: true }), clip, text, caret].join("\n  ");
+  const clip = `<clipPath id="type"><rect x="${x0 - 2}" y="${y - 14}" width="0" height="20"><animate attributeName="width" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${wVals.join(";")}"/></rect></clipPath>`;
+  const text = `<text x="${x0}" y="${y}" font-size="14" fill="${C.text}" clip-path="url(#type)">${esc(cmd)}</text>`;
+  const caret = `<rect x="${x0}" y="${y - 12}" width="8" height="15" fill="${C.vio}"><animate attributeName="x" dur="${D.toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${ktS}" values="${xVals.join(";")}"/><animate attributeName="opacity" dur="0.9s" repeatCount="indefinite" keyTimes="0;0.4;0.5;0.9;1" values="1;1;0;0;1"/></rect>`;
+  return [txt(promptX, y, "z0g ›", { size: 14, fill: C.vio, bold: true }), clip, text, caret].join("\n  ");
+}
+// The pinned input box + status bar: a framed prompt with the model, mode and a
+// token/cost readout embedded in the borders, and the shortcut hints, mirroring
+// the app's fixed-bottom TUI. Labels sit on the border with a small bg break.
+function footerBox(D) {
+  const x = 16, w = 788, cw = 6.3;
+  const seg = (segs, xa, by, anchor) => {
+    const plain = segs.map((z) => z.s).join("");
+    const wl = plain.length * cw;
+    const sx = anchor === "end" ? xa - wl : xa;
+    let out = rect(sx - 6, by - 6, wl + 12, 12, C.bg); // break the border stroke
+    let cx = sx;
+    for (const z of segs) { out += txt(cx, by + 3.5, z.s, { size: 10.5, fill: z.fill }); cx += z.s.length * cw; }
+    return out;
+  };
+  return [
+    `<rect x="${x}" y="${BOX_TOP}" width="${w}" height="${BOX_H}" rx="8" fill="none" stroke="${C.rule}" stroke-width="1"/>`,
+    seg([{ s: "24k tok", fill: C.mut }, { s: "  ·  ~$0.021", fill: C.mut }], x + w - 22, BOX_TOP, "end"),
+    buildCommand(D),
+    seg([{ s: "0gm-1.0-35b-a3b", fill: C.vio }, { s: "  ·  auto  ·  always-approve", fill: C.mut }], x + 22, BOX_BOT, "start"),
+    seg([{ s: "Shift+Tab mode  ·  Ctrl+C stop", fill: C.mut }], x + w - 22, BOX_BOT, "end"),
+  ].join("\n  ");
 }
 const chrome = [
   rect(8, 8, 804, H - 16, C.bg, { rx: 10 }).replace("/>", ` stroke="#30363d"/>`),
@@ -232,8 +256,6 @@ const chrome = [
   rect(8, 30, 804, 12, C.chrome),
   circle(28, 25, 6, "#ff5f56"), circle(48, 25, 6, "#ffbd2e"), circle(68, 25, 6, "#27c93f"),
   txt(410, 30, "z0gcode · 0G Compute", { size: 13, fill: C.mut, anchor: "middle" }),
-  buildCommand(D),
-  line(8, 88, 812, 88, "#30363d", 1),
 ].join("\n  ");
 
 const defs = `<defs>
@@ -246,8 +268,8 @@ const fades =
   `<rect x="9" y="${VIEW_TOP}" width="802" height="22" fill="url(#fadeTop)"/>` +
   `<rect x="9" y="${VIEW_TOP + VIEW_H - 22}" width="802" height="22" fill="url(#fadeBot)"/>`;
 const footer =
-  line(8, VIEW_TOP + VIEW_H, 812, VIEW_TOP + VIEW_H, "#30363d", 1) +
-  txt(24, H - 14, "No OpenAI or Anthropic key. Every token private and verifiable on 0G Compute (TEE).", { size: 11, fill: C.mut });
+  footerBox(D) +
+  txt(410, H - 16, "No OpenAI or Anthropic key. Every token private and verifiable on 0G Compute (TEE).", { size: 10.5, fill: C.mut, anchor: "middle" });
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-label="z0gcode terminal demo that auto-scrolls through six action sections: write code, generate an image, transcribe audio, the full 0G model catalog, parallel write subagents, and a verifiable on-chain session">
   ${defs}
