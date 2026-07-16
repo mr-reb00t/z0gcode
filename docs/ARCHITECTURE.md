@@ -23,6 +23,8 @@ bin/z0g.mjs        CLI: run / goal / init / models / doctor / attest / undo / ch
        ├─ src/mcp.mjs / mcp-server.mjs   MCP both ways: consume external tools, expose z0g's tools
        ├─ src/models-info.mjs model catalog: fetch + normalize /v1/models (price, ctx, TEE, discount)
        ├─ src/prompt.mjs      arrowSelect: raw-mode arrow-key picker (used by /model and /chats)
+       ├─ src/tui.mjs         fixed-bottom shell: scroll region + raw-mode line editor (pinned input box,
+       │                        status bar, Shift+Tab mode cycle); output scrolls above it, Z0G_CLASSIC opts out
        ├─ src/sessions.mjs    multiple chats per project (.z0g/sessions/<id>/, resume picker)
        ├─ src/settings.mjs    ~/.z0gcode/settings.json (model, effort, subagents, onchain, disabled skills)
        ├─ src/config.mjs      defaults (0G baked in: router URL, model 0gm-1.0, fallbacks, toggles)

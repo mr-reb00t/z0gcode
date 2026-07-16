@@ -1,6 +1,6 @@
 // z0gcode terminal UI. Dependency-free ANSI. One visual system, degrades
 // cleanly under NO_COLOR and when piped (non-TTY). No em-dashes anywhere.
-import { fmtCtx, orderChatModels, mediaModels } from "./models-info.mjs";
+import { fmtCtx, mediaModels, bandRank } from "./models-info.mjs";
 
 // ---- environment probes (computed once) ---------------------------------
 export const useColor = !!process.stdout.isTTY && process.env.NO_COLOR === undefined;
@@ -552,34 +552,42 @@ function trustCell(m) {
   return t.role((t.glyph ? t.glyph + " " : "") + t.short);
 }
 
-// ---- `z0g models` table --------------------------------------------------
+// ---- shared demo-style catalog vocabulary (picker + `z0g models`) --------
+const DOT = uiTTY ? "●" : "*";
 function bandOf(m) {
   if (String(m.id).startsWith("0gm")) return "0G native";
   if (m.private || m.verifiable) return "Verifiable (TEE)";
   return "Open (proxied)";
 }
+function bandMeta(b) {
+  if (b === "0G native") return { role: accent, label: "0G NATIVE", note: "in-house · private (TEE)" };
+  if (b === "Verifiable (TEE)") return { role: ok, label: "VERIFIABLE · TEE", note: "TEE attested on 0G" };
+  return { role: muted, label: "OPEN · PROXIED", note: "proxied passthrough" };
+}
+
+// ---- `z0g models` table --------------------------------------------------
 function modelRow(m, currentId) {
   const cur = m.id === currentId;
+  const t = trustTier(m);
   const gutter = cur ? accent(GLYPH.chevron + " ") : "  ";
+  const dot = t.role(DOT) + " ";
   const id = trunc(m.id, 20);
-  const idCell = pad(cur ? accent(strong(id)) : id, 20);
-  const ctx = muted(pad(fmtCtx(m.ctx), 5, "right"));
-  const out = muted(pad(m.maxOut ? fmtCtx(m.maxOut) : "-", 5, "right"));
-  const pin = muted(pad(fmtUsd(m.inPerM), 7, "right"));
-  const pout = muted(pad(fmtUsd(m.outPerM), 7, "right"));
-  const save = pad(m.discount != null ? ok(fmtSave(m.discount)) : "", 6, "right");
-  const trust = trustCell(m); // last column, no trailing pad
-  return gutter + idCell + " " + ctx + " " + out + " " + pin + " " + pout + " " + save + " " + trust;
+  const idCell = cur ? accent(strong(pad(id, 20))) : pad(id, 20);
+  const ctx = muted(pad(fmtCtx(m.ctx), 6, "right"));
+  const mx = muted(pad(m.maxOut ? fmtCtx(m.maxOut) : "-", 6, "right"));
+  const pin = muted(pad(fmtUsd(m.inPerM), 8, "right"));
+  const pout = muted(pad(fmtUsd(m.outPerM), 8, "right"));
+  const save = m.discount != null ? ok(pad(fmtSave(m.discount), 6, "right")) : muted(pad("·", 6, "right"));
+  return gutter + dot + idCell + " " + ctx + " " + mx + " " + pin + " " + pout + " " + save;
 }
 function colHeader() {
-  return (
-    "  " + pad("MODEL", 20) + " " + pad("CTX", 5, "right") + " " + pad("MAX", 5, "right") +
-    " " + pad("$IN", 7, "right") + " " + pad("$OUT", 7, "right") + " " + pad("SAVE", 6, "right") +
-    " " + "TRUST"
-  );
+  return pad("", 4) + pad("MODEL", 21) + pad("CTX", 6, "right") + " " + pad("MAX", 6, "right") +
+    " " + pad("$IN", 8, "right") + " " + pad("$OUT", 8, "right") + " " + pad("SAVE", 6, "right");
 }
 export function renderModelsTable(models, { currentId } = {}) {
-  const chat = orderChatModels(models, currentId);
+  const chat = models
+    .filter((m) => m.type === "chatbot")
+    .sort((a, b) => bandRank(a) - bandRank(b) || (a.inPerM ?? Infinity) - (b.inPerM ?? Infinity));
   const media = mediaModels(models);
   const out = [];
   out.push(section("Models", "0G Router · " + models.length));
@@ -589,23 +597,25 @@ export function renderModelsTable(models, { currentId } = {}) {
     const b = bandOf(m);
     if (b !== band) {
       band = b;
-      out.push("  " + muted(band));
+      const bm = bandMeta(b);
+      out.push("  " + bm.role(DOT + " " + bm.label) + muted("  ·  " + bm.note));
     }
     out.push(modelRow(m, currentId));
   }
   if (media.length) {
     out.push("");
-    out.push("  " + muted("Media models"));
+    out.push("  " + muted(DOT + " MEDIA"));
     for (const m of media) {
       const kind = m.type === "speech-to-text" ? "speech" : m.type === "text-to-image" ? "image" : m.type;
-      out.push("  " + pad(trunc(m.id, 20), 20) + " " + pad(trustCell(m), 8) + " " + muted(kind));
+      const t = trustTier(m);
+      out.push("  " + t.role(DOT) + " " + pad(trunc(m.id, 20), 20) + " " + muted(kind));
     }
   }
   out.push("");
   out.push(rule());
   out.push(
-    "  " + accent(GLYPH.priv) + " " + muted("private (TEE)  ") + ok(GLYPH.ver) + " " +
-    muted("verifiable  ") + muted(GLYPH.open + " open   ") +
+    "  " + accent(DOT) + " " + muted("private (TEE)   ") + ok(DOT) + " " +
+    muted("verifiable   ") + muted(DOT + " open   ·   ") +
     muted("SAVE vs official API · prices per 1M tokens")
   );
   out.push("  " + accent(GLYPH.seal) + " " + muted("all inference runs in a TEE on 0G Compute.  Switch: ") + accent("z0g --model <id>") + muted(" or ") + accent("/model"));
@@ -628,58 +638,66 @@ export function renderModelsPickList(models, currentId) {
 }
 
 // ---- `/model` arrow-key picker frame -------------------------------------
+// Styled after the demo's model catalog: trust bands (0G native / verifiable /
+// open), a colored trust dot per row, and MODEL/CTX/MAX/$IN/$OUT/SAVE columns.
 export function modelPickerFrame(items, index, currentId) {
-  const W = Math.max(24, Math.min(process.stdout.columns || 80, 100));
+  const W = Math.max(40, Math.min(process.stdout.columns || 80, 100));
   const termRows = process.stdout.rows || 24;
-  const lines = [];
+  const L = [];
   const tick = GLYPH.tick ? accent(GLYPH.tick + " ") : "";
-  lines.push(clip(tick + strong("Select model") + muted("   " + GLYPH.up + "/" + GLYPH.down + " move · enter select · esc cancel"), W));
-  lines.push("");
-  lines.push(clip("  " + muted(pad("MODEL", 20) + " " + pad("TRUST", 8) + " PRICE $/1M in·out"), W));
+  L.push(clip(tick + strong("Select a 0G model") + muted("    " + GLYPH.up + "/" + GLYPH.down + " move · enter select · esc cancel"), W));
+  L.push(clip("  " + accent(DOT) + muted(" private") + "   " + ok(DOT) + muted(" verifiable") + "   " + muted(DOT + " open") + muted("    · price / 1M tokens"), W));
+  L.push(clip(muted(pad("", 4) + pad("MODEL", 21) + pad("CTX", 6, "right") + " " + pad("MAX", 6, "right") + " " + pad("$IN", 8, "right") + " " + pad("$OUT", 8, "right") + " " + pad("SAVE", 6, "right")), W));
 
-  // Window to the terminal height: the frame must never exceed the viewport,
-  // or arrowSelect's in-place rewind (moveCursor up) desyncs and corrupts it.
-  const CHROME = 8; // hint + blank + colheader + 2 "more" rows + blank + 2 detail lines
-  const win = Math.max(1, termRows - CHROME - 1); // -1 for arrowSelect's trailing newline
+  // Window to the terminal height (reserve room for up to 3 band headers) so the
+  // frame never exceeds the viewport and arrowSelect's in-place redraw stays sane.
+  const win = Math.max(1, termRows - 12);
   let start = 0;
   if (items.length > win) start = Math.min(Math.max(0, index - (win >> 1)), items.length - win);
   const end = Math.min(items.length, start + win);
 
-  lines.push(start > 0 ? "  " + muted(GLYPH.up + " " + start + " more") : "");
+  L.push(start > 0 ? "  " + muted(GLYPH.up + " " + start + " more") : "");
+  let lastBand = null;
   for (let i = start; i < end; i++) {
     const m = items[i];
+    const b = bandOf(m);
+    if (b !== lastBand) {
+      lastBand = b;
+      const bm = bandMeta(b);
+      const left = "  " + bm.role(DOT + " " + bm.label);
+      const gap = Math.max(1, W - vlen(left) - vlen(bm.note) - 1);
+      L.push(clip(left + " ".repeat(gap) + muted(bm.note), W));
+    }
     const sel = i === index;
     const isCur = m.id === currentId;
-    let gutter;
-    if (sel) gutter = useColor ? accent(GLYPH.chevron + " ") : GLYPH.point + " ";
-    else if (isCur) gutter = ok(GLYPH.current + " ");
-    else gutter = "  ";
     const t = trustTier(m);
-    const price = fmtUsd(m.inPerM) + "/" + fmtUsd(m.outPerM);
-    const rowText = pad(trunc(m.id, 20), 20) + " " + pad((t.glyph ? t.glyph + " " : "") + t.short, 8) + " " + price;
-    let painted;
-    if (sel) painted = useColor ? reverse(rowText + " ") : rowText;
-    else if (isCur) painted = strong(rowText);
-    else painted = rowText;
-    lines.push(clip(gutter + painted, W));
+    const idc = pad(trunc(m.id, 20), 20);
+    const ctx = pad(fmtCtx(m.ctx), 6, "right");
+    const mx = pad(m.maxOut ? fmtCtx(m.maxOut) : "-", 6, "right");
+    const pin = pad(fmtUsd(m.inPerM), 8, "right");
+    const pout = pad(fmtUsd(m.outPerM), 8, "right");
+    const sv = pad(m.discount != null ? fmtSave(m.discount) : "·", 6, "right");
+    const gutter = sel ? (useColor ? accent(GLYPH.chevron + " ") : GLYPH.point + " ") : isCur ? ok(GLYPH.ok + " ") : "  ";
+    const dotStr = t.role(DOT) + " ";
+    if (sel && useColor) {
+      L.push(clip(gutter + dotStr + reverse(idc + " " + ctx + " " + mx + " " + pin + " " + pout + " " + sv + " "), W));
+    } else {
+      const idCell = isCur ? strong(idc) : idc;
+      const svCell = m.discount != null ? ok(sv) : muted(sv);
+      L.push(clip(gutter + dotStr + idCell + " " + muted(ctx) + " " + muted(mx) + " " + pin + " " + pout + " " + svCell, W));
+    }
   }
-  lines.push(end < items.length ? "  " + muted(GLYPH.down + " " + (items.length - end) + " more") : "");
-  lines.push("");
+  L.push(end < items.length ? "  " + muted(GLYPH.down + " " + (items.length - end) + " more") : "");
+  L.push("");
 
   const m = items[index] || items[0];
   const t = trustTier(m);
-  const price = "in " + fmtUsd(m.inPerM) + "  out " + fmtUsd(m.outPerM);
+  const tee = m.private ? "TeeML" : m.verifiable ? "TeeTLS" : "";
   const disc = m.discount != null ? "  ·  " + m.discount + "% off" : "";
-  const idShown = trunc(m.id, Math.max(0, W - 2));
-  const nameStr = m.name ? "  ·  " + m.name : "";
-  lines.push(clip("  " + strong(idShown) + muted(nameStr), W));
-  const plain2 = "  " + price + " /1M  ·  ctx " + fmtCtx(m.ctx) + "  ·  " + t.long + disc;
-  lines.push(
-    vlen(plain2) <= W
-      ? "  " + muted(price + " /1M  ·  ctx " + fmtCtx(m.ctx) + "  ·  ") + t.role(t.long) + muted(disc)
-      : clip(muted(plain2), W)
-  );
-  return lines.join("\n");
+  const nameStr = m.name && m.name.toLowerCase() !== m.id.toLowerCase() ? "  ·  " + m.name : "";
+  L.push(clip("  " + t.role(DOT) + " " + strong(trunc(m.id, Math.max(4, W - 6))) + muted(nameStr), W));
+  L.push(clip("  " + muted("in " + fmtUsd(m.inPerM) + "  out " + fmtUsd(m.outPerM) + " /1M  ·  ctx " + fmtCtx(m.ctx) + "  ·  ") + t.role(t.long + (tee ? " (" + tee + ")" : "")) + muted(disc), W));
+  return L.join("\n");
 }
 export function pickConfirm(id) {
   return "  " + ok(GLYPH.ok) + " model set to " + strong(id) + muted("  (saved)");

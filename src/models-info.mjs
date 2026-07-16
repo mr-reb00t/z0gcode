@@ -91,6 +91,20 @@ export function orderChatModels(models, defaultId) {
   });
 }
 
+// Trust band for grouping: 0 = 0G native, 1 = verifiable/private (TEE), 2 = open.
+export function bandRank(m) {
+  if (String(m.id).startsWith("0gm")) return 0;
+  if (m.private || m.verifiable) return 1;
+  return 2;
+}
+
+// Chat models grouped by trust band, then by price, for the banded picker.
+export function orderChatModelsBanded(models) {
+  return models
+    .filter((m) => m.type === "chatbot" && m.tools)
+    .sort((a, b) => bandRank(a) - bandRank(b) || (a.inPerM ?? Infinity) - (b.inPerM ?? Infinity));
+}
+
 // Non-chat models (speech, image) for a separate compact section.
 export function mediaModels(models) {
   return models.filter((m) => m.type !== "chatbot");

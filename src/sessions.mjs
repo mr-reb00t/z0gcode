@@ -62,6 +62,22 @@ export async function saveMessages(cwd, id, messages) {
   await fs.writeFile(sessionFile(cwd, id), JSON.stringify(d, null, 2), "utf8");
 }
 
+// Per-chat UI preference: the permission mode (ask|auto|plan) the user last left
+// this chat in, so re-opening it restores that mode instead of the default.
+export async function getSessionMode(cwd, id) {
+  const d = await readSession(cwd, id);
+  const m = d && d.mode;
+  return m === "ask" || m === "auto" || m === "plan" ? m : null;
+}
+export async function setSessionMode(cwd, id, mode) {
+  if (!["ask", "auto", "plan"].includes(mode)) return;
+  const d = (await readSession(cwd, id)) || { tool: "z0gcode", id, title: "", created: new Date().toISOString() };
+  if (d.mode === mode) return;
+  d.mode = mode;
+  await fs.mkdir(sessionDir(cwd, id), { recursive: true });
+  await fs.writeFile(sessionFile(cwd, id), JSON.stringify(d, null, 2), "utf8");
+}
+
 // Sync listing (used before async flows and by the picker). Newest first.
 export function listSessions(cwd) {
   const dir = root(cwd);

@@ -16,16 +16,18 @@ import { loadProvenance } from "../src/provenance.mjs";
 import {
   sessionDir, listSessions, mostRecent, createSession,
   readMessages, saveMessages, renameSession, deleteSession, migrateLegacy, ensureGitignore, pruneEmptySync,
+  getSessionMode, setSessionMode,
 } from "../src/sessions.mjs";
 import { loadPlan } from "../src/plan.mjs";
 import { loadMcp } from "../src/mcp.mjs";
 import { saveSetting, loadSettings } from "../src/settings.mjs";
-import { fetchModels, orderChatModels } from "../src/models-info.mjs";
+import { fetchModels, orderChatModels, orderChatModelsBanded } from "../src/models-info.mjs";
 import { discoverSkills, setSkillEnabled } from "../src/user-skills.mjs";
 import { generateImage, transcribeAudio } from "../src/media.mjs";
 import { uploadFileToStorage, anchorOnChain, downloadAndVerify } from "../src/anchor.mjs";
 import { encryptEnvelope, decryptEnvelope } from "../src/crypto.mjs";
 import { arrowSelect } from "../src/prompt.mjs";
+import { createTui, tuiCapable } from "../src/tui.mjs";
 import * as ui from "../src/ui.mjs";
 
 function helpText() {
@@ -136,7 +138,7 @@ function slashCompleter(line) {
 async function chatModelsFor(client, current) {
   try {
     const all = await fetchModels(client);
-    const chat = orderChatModels(all, current).filter((m) => m.tools);
+    const chat = orderChatModelsBanded(all); // grouped by trust band, then price
     return chat.length ? chat : orderChatModels(all, current);
   } catch (e) {
     ui.error("could not list models: " + e.message);
@@ -786,7 +788,9 @@ async function repl(flags) {
   let onchain = flags.onchain;
   let escalate = flags.escalate;
   // Permission mode: auto (run all) | ask (approve each) | plan (read-only).
-  let mode = flags.auto ? "auto" : "ask";
+  // A chat remembers the mode it was left in; --auto always forces auto.
+  let mode = flags.auto ? "auto" : (await getSessionMode(cwd, sessionId)) || "ask";
+  const persistMode = () => setSessionMode(cwd, sessionId, mode).catch(() => {});
   const allowedCmds = new Set(loadSettings(cwd).allowedCommands || []);
   let sessTokens = { in: 0, out: 0 };
   let priceMap = null;
@@ -804,22 +808,47 @@ async function repl(flags) {
   const sessTitle = (id) => listSessions(cwd).find((s) => s.id === id)?.title || "New chat";
 
   const promptStr = ui.strong("z0g") + ui.accent(" " + ui.GLYPH.chevron) + " ";
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: promptStr, completer: slashCompleter });
   let pendingModels = null; // when set, the next line is a /model selection
   const activeModel = () => model || CONFIG.model;
   const activeEffort = () => (effort === "" ? null : (effort || CONFIG.effort));
   const activeOnchain = () => (onchain !== undefined ? onchain : CONFIG.onchain);
   const activeEscalate = () => (escalate !== undefined ? escalate : CONFIG.escalate);
+  const approveLabel = () => (mode === "auto" ? "always-approve" : mode === "plan" ? "read-only" : "ask each");
+  // Fixed-bottom UI (input box + status bar pinned, output scrolls above) when
+  // the terminal supports it; otherwise the classic readline prompt. Shift+Tab
+  // cycles the permission mode live and the status bar updates immediately.
+  const TUI = tuiCapable()
+    ? createTui({
+        promptStr,
+        statusProvider: () => ({ model: activeModel(), mode, approve: approveLabel(), tokens: sessTokens.in + sessTokens.out, cost: costOf(), running }),
+        onModeCycle: () => { const order = ["ask", "auto", "plan"]; mode = order[(order.indexOf(mode) + 1) % order.length]; persistMode(); },
+        // Tab-completion for slash commands (like the old readline completer).
+        completer: (buf) => {
+          if (!buf.startsWith("/") || /\s/.test(buf)) return { matches: [] };
+          const entries = [...SLASH_COMMANDS, ...customCmds.map((c) => ["/" + c.name, c.description])];
+          const matches = entries.filter(([c]) => c.startsWith(buf)).map(([c]) => c);
+          const desc = Object.fromEntries(entries);
+          const menu = "  " + ui.muted("Commands") + "\n" + matches.map((mc) => "  " + ui.accent(mc.padEnd(11)) + "  " + ui.muted(desc[mc] || "")).join("\n");
+          return { matches, menu };
+        },
+      })
+    : null;
+  const rl = TUI ? null : readline.createInterface({ input: process.stdin, output: process.stdout, prompt: promptStr, completer: slashCompleter });
+  // Hand input control to a sub-UI (picker / y-n prompt) and take it back.
+  // opts.modal clears the screen for a full-screen arrow picker (no gap left
+  // above the pinned footer); the inline y/n prompt uses the lightweight path.
+  const suspendInput = (opts) => (TUI ? TUI.suspend(opts) : rl.pause());
+  const resumeInput = (opts) => (TUI ? TUI.resume(opts) : rl.resume());
   // Approve a gated action in "ask" mode. Remembers "always" choices in settings
   // so it never asks again for that program (or for on-chain actions).
   const approve = async (kind, desc) => {
     const key = kind === "run_bash" ? "bash:" + (String(desc).trim().split(/\s+/)[0] || "?") : kind === "web" ? "@web" : "@onchain";
     if (allowedCmds.has(key)) return true;
-    rl.pause();
+    suspendInput();
     const label = kind === "run_bash" ? "run " + ui.strong(String(desc).slice(0, 80)) : kind === "web" ? "web: " + String(desc).slice(0, 80) : "on-chain: " + desc;
     console.log("\n  " + ui.warn(ui.uiTTY ? "▲" : "!") + "  " + label);
     const a = (await ask("     allow?  " + ui.accent("y") + "es  " + ui.accent("n") + "o  " + ui.accent("a") + "lways  ")).trim().toLowerCase();
-    rl.resume();
+    resumeInput();
     if (a === "a" || a === "always") {
       allowedCmds.add(key);
       saveSetting("allowedCommands", [...allowedCmds]);
@@ -835,6 +864,7 @@ async function repl(flags) {
   };
   // Divider + session token/cost counter, then the z0g prompt.
   const showPrompt = () => {
+    if (TUI) return; // the pinned footer is always visible in TUI mode
     console.log(ui.sessionBar({ model: activeModel(), effort: activeEffort(), inTok: sessTokens.in, outTok: sessTokens.out, cost: costOf() }));
     rl.prompt();
   };
@@ -845,37 +875,51 @@ async function repl(flags) {
   // Ctrl+C interrupts a running turn (returns to the prompt) instead of killing z0g.
   let running = false;
   let abortCtl = null;
-  rl.on("SIGINT", () => {
-    if (running && abortCtl) { abortCtl.abort(); }
-    else { rl.close(); }
-  });
+  if (rl) {
+    rl.on("SIGINT", () => {
+      if (running && abortCtl) { abortCtl.abort(); }
+      else { rl.close(); }
+    });
+  } else {
+    // TUI: raw-mode Ctrl+C arrives as a keypress the box handles. This catches
+    // the cooked-mode case (during a y/n approval prompt) so it aborts the turn
+    // rather than killing z0g.
+    process.on("SIGINT", () => {
+      if (running && abortCtl) abortCtl.abort();
+      else { TUI.stop(); process.exit(0); }
+    });
+  }
   // Run one agent turn: hooks, the agent, then persist history + tokens.
   const runTurn = async (task) => {
     await runHooks(cwd, "preRun", hooks, flags.auto, task);
     abortCtl = new AbortController();
     running = true;
+    TUI?.setRunning(true, () => abortCtl?.abort());
     let res;
     try {
       res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), signal: abortCtl.signal, history, mcp });
     } finally {
       running = false; abortCtl = null;
+      TUI?.setRunning(false);
     }
     history = res.messages;
     if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
     if (!res.aborted) await runHooks(cwd, "postRun", hooks, flags.auto, task);
   };
-  ui.info("Interactive session. Type a task, or / then Tab for commands.");
-  ui.info("mode: " + ui.strong(mode) + (mode === "ask" ? " (I ask before running commands)" : mode === "plan" ? " (read-only until you /mode auto)" : " (runs commands without asking)") + "  ·  /mode ask|auto|plan  ·  Ctrl+C stops a running task");
-  if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
-  if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
+  const intro = () => {
+    ui.info("Interactive session. Type a task, or / then Tab for commands.");
+    const switchHint = TUI ? "Shift+Tab or /mode to switch" : "/mode ask|auto|plan to switch";
+    ui.info("mode: " + ui.strong(mode) + (mode === "ask" ? " (I ask before running commands)" : mode === "plan" ? " (read-only until you /mode auto)" : " (runs commands without asking)") + "  ·  " + switchHint + "  ·  Ctrl+C stops a running task");
+    if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
+    if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
+  };
   // Blinking block cursor at the prompt (matches the demo); restore on any exit.
   ui.cursorBlink(true);
-  process.once("exit", () => ui.cursorBlink(false));
-  showPrompt();
-  for await (const line of rl) {
-    const input = line.trim();
-    if (!input) { pendingModels = null; showPrompt(); continue; }
+  process.once("exit", () => { ui.cursorBlink(false); if (TUI) TUI.stop(); });
+  // Handle one entered line (shared by the TUI and classic loops). The input is
+  // already trimmed and non-empty. Returns "exit" to end the session.
+  const processLine = async (input) => {
 
     // Resolve a pending /model pick (a slash command instead cancels it).
     if (pendingModels && !input.startsWith("/")) {
@@ -887,21 +931,21 @@ async function repl(flags) {
       else if (list.includes(input)) chosen = input;
       if (chosen) { model = chosen; saveSetting("model", chosen); console.log(ui.pickConfirm(chosen)); }
       else ui.info("model unchanged");
-      showPrompt();
-      continue;
+      return;
     }
     if (pendingModels) pendingModels = null;
 
     if (input.startsWith("/")) {
       const [cmd, ...rest] = input.slice(1).split(/\s+/);
       const arg = rest.join(" ");
-      if (cmd === "exit" || cmd === "quit") break;
+      if (cmd === "exit" || cmd === "quit") return "exit";
       else if (cmd === "help" || cmd === "") console.log(slashMenu());
       else if (cmd === "clear") {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
         await pruneIfEmpty(sessionId);
         const s = await createSession(cwd, {});
         sessionId = s.id; sessionDirPath = s.dir; history = null;
+        persistMode(); // carry the current mode into the fresh chat
         ui.info("context cleared");
       }
       else if (cmd === "compact") {
@@ -930,14 +974,14 @@ async function repl(flags) {
           const models = await chatModelsFor(client, cur);
           if (models && models.length) {
             if (interactiveTTY()) {
-              rl.pause();
+              suspendInput({ modal: true });
               const chosen = await arrowSelect({
                 items: models,
                 initialIndex: Math.max(0, models.findIndex((m) => m.id === cur)),
                 renderFrame: (its, i) => ui.modelPickerFrame(its, i, cur),
                 clearOnExit: true,
               });
-              rl.resume();
+              resumeInput({ modal: true });
               if (chosen) { model = chosen.id; saveSetting("model", chosen.id); console.log(ui.pickConfirm(chosen.id)); }
               else ui.info("model unchanged");
             } else {
@@ -998,6 +1042,7 @@ async function repl(flags) {
         const a = arg.toLowerCase().trim();
         if (["ask", "auto", "plan"].includes(a)) {
           mode = a;
+          await persistMode();
           const desc = a === "auto" ? "runs commands without asking" : a === "plan" ? "read-only: explores and plans, no writes or commands" : "asks before each command / on-chain action";
           ui.info("mode: " + ui.strong(a) + "  ·  " + desc);
         } else if (!a) {
@@ -1010,18 +1055,20 @@ async function repl(flags) {
       else if (cmd === "chats") {
         if (Array.isArray(history) && history.length) await saveMessages(cwd, sessionId, history);
         if (interactiveTTY()) {
-          rl.pause();
+          suspendInput({ modal: true });
           const chosen = await sessionPickerLoop(cwd, sessionId);
-          rl.resume();
+          resumeInput({ modal: true });
           if (chosen && chosen !== "__cancel__") {
             if (chosen !== sessionId) await pruneIfEmpty(sessionId); // never prune the one we keep
             if (chosen === "__new__") {
               const s = await createSession(cwd, {});
               sessionId = s.id; sessionDirPath = s.dir; history = null;
+              persistMode();
               ui.info("new chat");
             } else {
               sessionId = chosen; sessionDirPath = sessionDir(cwd, chosen);
               history = await readMessages(cwd, chosen);
+              const sm = await getSessionMode(cwd, sessionId); if (sm) mode = sm; // restore this chat's mode
               ui.info("switched to: " + sessTitle(sessionId));
             }
           } else if (!listSessions(cwd).some((s) => s.id === sessionId)) {
@@ -1030,10 +1077,12 @@ async function repl(flags) {
             if (rid) {
               sessionId = rid; sessionDirPath = sessionDir(cwd, rid);
               history = await readMessages(cwd, rid);
+              const sm = await getSessionMode(cwd, sessionId); if (sm) mode = sm;
               ui.info("switched to: " + sessTitle(sessionId));
             } else {
               const s = await createSession(cwd, {});
               sessionId = s.id; sessionDirPath = s.dir; history = null;
+              persistMode();
               ui.info("new chat");
             }
           }
@@ -1044,6 +1093,7 @@ async function repl(flags) {
         await pruneIfEmpty(sessionId);
         const s = await createSession(cwd, { title: arg || "" });
         sessionId = s.id; sessionDirPath = s.dir; history = null;
+        persistMode();
         ui.info("new chat" + (arg ? ": " + arg : ""));
       }
       else if (cmd === "rename") {
@@ -1071,9 +1121,10 @@ async function repl(flags) {
       }
       else if (cmd === "goal") {
         abortCtl = new AbortController(); running = true;
+        TUI?.setRunning(true, () => abortCtl?.abort());
         try {
           await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), signal: abortCtl.signal, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
-        } finally { running = false; abortCtl = null; }
+        } finally { running = false; abortCtl = null; TUI?.setRunning(false); }
         history = await readMessages(cwd, sessionId) || history;
       }
       else if (customMap[cmd]) {
@@ -1081,15 +1132,40 @@ async function repl(flags) {
         await runTurn(task);
       }
       else ui.info("unknown command; /help for the list");
-      showPrompt();
-      continue;
+      return;
     }
 
     await runTurn(input);
+  };
+
+  if (TUI) {
+    // Pinned-bottom UI: draw the box, then loop reading lines from the editor.
+    TUI.start();
+    intro();
+    while (true) {
+      const line = await TUI.readLine();
+      if (line === null) break; // Ctrl+D / Ctrl+C on an empty prompt
+      const input = line.trim();
+      if (!input) { pendingModels = null; continue; }
+      const r = await processLine(input);
+      if (r === "exit") break;
+    }
+    TUI.stop();
+  } else {
+    // Classic readline prompt (non-TTY, piped, or Z0G_CLASSIC).
+    intro();
     showPrompt();
+    for await (const line of rl) {
+      const input = line.trim();
+      if (!input) { pendingModels = null; showPrompt(); continue; }
+      const r = await processLine(input);
+      if (r === "exit") break;
+      showPrompt();
+    }
+    rl.close();
   }
-  rl.close();
   ui.cursorBlink(false);
+  await persistMode(); // flush the last mode so reopening the chat restores it
   await pruneIfEmpty(sessionId);
   await mcp?.close();
 }
