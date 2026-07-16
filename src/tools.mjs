@@ -331,7 +331,8 @@ export function makeExecutor({ cwd, allowBash, sessionDir, onchain = false, mode
         }
         case "run_bash": {
           if (readOnly) return planDeny("run commands");
-          if (!(await permit("run_bash", args.command))) {
+          // Read-only commands (ls, cat, git status, grep …) run without asking.
+          if (!isSafeBash(args.command) && !(await permit("run_bash", args.command))) {
             return { ok: false, summary: "bash not allowed", content: effMode === "ask" ? "You declined this command." : "run_bash needs approval: run z0g interactively (mode ask) and approve it, or with --auto." };
           }
           const out = await runBash(args.command, cwd);
@@ -526,6 +527,28 @@ async function deployToChain(cwd, args, onchain) {
   } catch (e) {
     return { ok: false, summary: "0g deploy failed", content: `ERROR: ${e.message}. Ensure ethers is installed, the wallet is funded, and contracts are compiled with evmVersion cancun.` };
   }
+}
+
+// Read-only shell commands that are auto-approved in "ask" mode (no prompt).
+// Conservative: a single simple command (no pipes, redirects, chaining, or
+// substitution) whose program only reads. git/npm restricted to read subcommands.
+const SAFE_PROGRAMS = new Set(["ls", "cat", "pwd", "echo", "head", "tail", "wc", "stat", "file", "which", "whoami", "date", "env", "printenv", "grep", "rg", "tree", "du", "df", "basename", "dirname", "realpath", "hostname", "uname", "id", "cd"]);
+const SAFE_GIT = new Set(["status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe"]);
+const SAFE_NPM = new Set(["ls", "view", "outdated", "why", "list"]);
+export function isSafeBash(command) {
+  const c = String(command || "").trim();
+  if (!c) return false;
+  if (/[|&;<>`$(){}\\]/.test(c) || c.includes("&&") || c.includes("||")) return false; // no chaining/redirect/substitution
+  const parts = c.split(/\s+/);
+  const prog = parts[0];
+  if (SAFE_PROGRAMS.has(prog)) {
+    if (prog === "find" || /-o(utput)?\b/.test(c)) return false; // never (find can delete; -o may write)
+    return true;
+  }
+  if (prog === "git") return SAFE_GIT.has(parts[1]);
+  if (prog === "npm") return SAFE_NPM.has(parts[1]);
+  if ((prog === "node" || prog === "python" || prog === "python3") && (parts[1] === "--version" || parts[1] === "-v" || parts[1] === "-V")) return true;
+  return false;
 }
 
 function runBash(command, cwd) {

@@ -5,8 +5,8 @@ import readline from "node:readline";
 import path from "node:path";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { exec } from "node:child_process";
-import { CONFIG, normEffort, EFFORT_LEVELS, boolOf } from "../src/config.mjs";
-import { makeClient } from "../src/client.mjs";
+import { CONFIG, normEffort, EFFORT_LEVELS, boolOf, modelChain } from "../src/config.mjs";
+import { makeClient, complete } from "../src/client.mjs";
 import { runAgent } from "../src/agent.mjs";
 import { INIT_TASK } from "../src/context.mjs";
 import { undoLastTurn, readCheckpointLog, activeTurns } from "../src/checkpoints.mjs";
@@ -86,6 +86,7 @@ function helpText() {
 const SLASH_COMMANDS = [
   ["/help", "Show commands"],
   ["/clear", "Reset the conversation context"],
+  ["/compact", "Summarize the conversation to shrink context and cost"],
   ["/chats", "Switch chat (arrow-key picker, search, rename, delete)"],
   ["/new", "Start a new chat (/new [title])"],
   ["/rename", "Rename the current chat (/rename <title>)"],
@@ -841,17 +842,31 @@ async function repl(flags) {
   const customMap = Object.fromEntries(customCmds.map((c) => [c.name, c]));
   extraSlash = customCmds.map((c) => "/" + c.name);
   const hooks = loadHooks(cwd);
+  // Ctrl+C interrupts a running turn (returns to the prompt) instead of killing z0g.
+  let running = false;
+  let abortCtl = null;
+  rl.on("SIGINT", () => {
+    if (running && abortCtl) { abortCtl.abort(); }
+    else { rl.close(); }
+  });
   // Run one agent turn: hooks, the agent, then persist history + tokens.
   const runTurn = async (task) => {
     await runHooks(cwd, "preRun", hooks, flags.auto, task);
-    const res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), history, mcp });
+    abortCtl = new AbortController();
+    running = true;
+    let res;
+    try {
+      res = await runAgent({ client, task, cwd, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), signal: abortCtl.signal, history, mcp });
+    } finally {
+      running = false; abortCtl = null;
+    }
     history = res.messages;
     if (res.usageTotal) { sessTokens.in += res.usageTotal.prompt || 0; sessTokens.out += res.usageTotal.completion || 0; }
     await saveMessages(cwd, sessionId, history);
-    await runHooks(cwd, "postRun", hooks, flags.auto, task);
+    if (!res.aborted) await runHooks(cwd, "postRun", hooks, flags.auto, task);
   };
   ui.info("Interactive session. Type a task, or / then Tab for commands.");
-  ui.info("mode: " + ui.strong(mode) + (mode === "ask" ? " (I ask before running commands)" : mode === "plan" ? " (read-only until you /mode auto)" : " (runs commands without asking)") + "  ·  /mode ask|auto|plan");
+  ui.info("mode: " + ui.strong(mode) + (mode === "ask" ? " (I ask before running commands)" : mode === "plan" ? " (read-only until you /mode auto)" : " (runs commands without asking)") + "  ·  /mode ask|auto|plan  ·  Ctrl+C stops a running task");
   if (customCmds.length) ui.info(customCmds.length + " custom command(s): " + customCmds.map((c) => "/" + c.name).join(", "));
   if (hasHooks(hooks) && !flags.auto) ui.info("hooks are configured; run with --auto to enable them");
   // Blinking block cursor at the prompt (matches the demo); restore on any exit.
@@ -888,6 +903,25 @@ async function repl(flags) {
         const s = await createSession(cwd, {});
         sessionId = s.id; sessionDirPath = s.dir; history = null;
         ui.info("context cleared");
+      }
+      else if (cmd === "compact") {
+        const hist = Array.isArray(history) ? history : [];
+        const convo = hist.filter((m) => m.role !== "system");
+        if (convo.length < 2) { ui.info("nothing to compact yet"); }
+        else {
+          ui.info("compacting the conversation to save context...");
+          const sys = hist.find((m) => m.role === "system") || null;
+          const req = [...hist, { role: "user", content: "Summarize this coding session compactly, for your own future reference so you can continue with far less context: the original task, key decisions, files created or changed and why, important facts or values discovered, and the current state and next step. Keep everything you would need to continue; drop the chatter. Reply with only the summary." }];
+          try {
+            const res = await complete(client, { models: modelChain(activeModel()), messages: req, effort: activeEffort() });
+            const summary = (res.message?.content || "").trim();
+            if (summary) {
+              history = [...(sys ? [sys] : []), { role: "user", content: "[Earlier session, compacted]\n" + summary }];
+              await saveMessages(cwd, sessionId, history);
+              ui.info("compacted " + convo.length + " messages into a summary. Context is now smaller.");
+            } else ui.info("could not summarize; nothing changed");
+          } catch (e) { console.log(ui.warn("compact failed: " + e.message)); }
+        }
       }
       else if (cmd === "model") {
         if (arg) { model = arg; saveSetting("model", arg); console.log(ui.pickConfirm(arg)); }
@@ -1036,7 +1070,10 @@ async function repl(flags) {
         else { console.log(ui.section("Custom commands", customCmds.length + " loaded")); for (const c of customCmds) console.log("  " + ui.accent("/" + c.name) + "  " + ui.muted(c.description)); }
       }
       else if (cmd === "goal") {
-        await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        abortCtl = new AbortController(); running = true;
+        try {
+          await runGoal({ client, objective: arg, cwd, sessionId, sessionDir: sessionDirPath, preferredMode: mode, approve, preferredModel: model, preferredEffort: effort, preferredSubagents: subagents, preferredOnchain: activeOnchain(), preferredEscalate: activeEscalate(), signal: abortCtl.signal, verifyCmd: flags.verify || detectVerifyCmd(cwd), maxIters: 3, history });
+        } finally { running = false; abortCtl = null; }
         history = await readMessages(cwd, sessionId) || history;
       }
       else if (customMap[cmd]) {

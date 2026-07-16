@@ -57,7 +57,7 @@ function parseArgs(raw) {
   }
 }
 
-export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredMode, approve, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, preferredEscalate, onModel, history, mcp, quiet = false, toolNames = null, isSubagent = false }) {
+export async function runAgent({ client, task, cwd, sessionDir, allowBash, preferredMode, approve, preferredModel, preferredEffort, preferredSubagents, preferredOnchain, preferredEscalate, onModel, history, mcp, signal, quiet = false, toolNames = null, isSubagent = false }) {
   const q = !!quiet;
   // "" means an explicit unset (use the model's own default); undefined falls back.
   const effort = preferredEffort === "" ? null : (preferredEffort || CONFIG.effort);
@@ -102,6 +102,11 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
   let finalText = "";
 
   for (let step = 0; step < CONFIG.maxSteps; step++) {
+    if (signal?.aborted) {
+      if (!q) { ui.clearThinking(); ui.error("Interrupted."); }
+      usageTotal.total = usageTotal.prompt + usageTotal.completion;
+      return { ok: false, aborted: true, steps: step, changes: prov.count(), messages, finalText, usageTotal };
+    }
     // Choose model order: escalate a stuck turn to a stronger fallback instead of looping.
     let order;
     if (escalate) {
@@ -122,6 +127,7 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
         messages,
         tools: toolSet,
         effort,
+        signal,
         onDelta: q
           ? undefined
           : (t) => {
@@ -133,6 +139,11 @@ export async function runAgent({ client, task, cwd, sessionDir, allowBash, prefe
             },
       });
     } catch (e) {
+      if (signal?.aborted) {
+        if (!q) { ui.clearThinking(); ui.error("Interrupted."); }
+        usageTotal.total = usageTotal.prompt + usageTotal.completion;
+        return { ok: false, aborted: true, steps: step, changes: prov.count(), messages, finalText, usageTotal };
+      }
       if (!q) {
         ui.clearThinking();
         ui.error(`All 0G models failed: ${e.message}`);

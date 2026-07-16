@@ -23,11 +23,10 @@ export async function complete(client, { models, messages, tools, effort }) {
         const body = {
           model,
           messages,
-          tools,
-          tool_choice: "auto",
           max_tokens: CONFIG.maxTokens,
           temperature: CONFIG.temperature,
         };
+        if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
         if (effort) body.reasoning_effort = effort;
         const res = await client.chat.completions.create(body);
         const message = res.choices?.[0]?.message;
@@ -64,11 +63,12 @@ export async function complete(client, { models, messages, tools, effort }) {
 
 // Streaming variant: calls onDelta(text) for content as it arrives and assembles
 // tool calls from streamed fragments. Same fallback/retry as complete().
-export async function completeStream(client, { models, messages, tools, onDelta, effort }) {
+export async function completeStream(client, { models, messages, tools, onDelta, effort, signal }) {
   let lastErr;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        if (signal?.aborted) throw new Error("aborted");
         const body = {
           model,
           messages,
@@ -80,7 +80,7 @@ export async function completeStream(client, { models, messages, tools, onDelta,
           stream_options: { include_usage: true },
         };
         if (effort) body.reasoning_effort = effort;
-        const stream = await client.chat.completions.create(body);
+        const stream = await client.chat.completions.create(body, signal ? { signal } : undefined);
         let content = "";
         const acc = [];
         let usage = null;
@@ -117,6 +117,7 @@ export async function completeStream(client, { models, messages, tools, onDelta,
         return { message, model, usage, responseId, trace };
       } catch (e) {
         lastErr = e;
+        if (signal?.aborted) throw e; // user interrupt: do not retry or fall back
         const status = e?.status;
         if (status === 503) {
           await sleep(400 * (attempt + 1));
